@@ -17,6 +17,7 @@
 #define SPI_SPEED           1000000
 
 #define RF_CHANNELS         5
+#define RF_TIMESLOT_US      4088
 
 const char* const rf24AmpPowerNames[] = {"MIN", "LOW", "HIGH", "MAX"};
 
@@ -102,64 +103,118 @@ class HmRadio : public Radio {
                 DBGPRINTLN(String(mDtuSn, HEX));
             } else
                 DPRINTLN(DBG_WARN, F("WARNING! your NRF24 module can't be reached, check the wiring"));
+            //
+            this->mTimeslotStart = micros();
         }
 
         void loop(void) {
-            if (!mIrqRcvd)
-                return; // nothing to do
-            mIrqRcvd = false;
-            bool tx_ok, tx_fail, rx_ready;
-            mNrf24->whatHappened(tx_ok, tx_fail, rx_ready);  // resets the IRQ pin to HIGH
-            mNrf24->flush_tx();                              // empty TX FIFO
 
-            // start listening
-            uint8_t chOffset = 2;
-            mRxChIdx = (mTxChIdx + chOffset) % RF_CHANNELS;
-            mNrf24->setChannel(mRfChLst[mRxChIdx]);
-            mNrf24->startListening();
-
-            if(NULL == mLastIv) // prevent reading on NULL object!
-                return;
-
-            uint32_t innerLoopTimeout = 55000;
-            uint32_t loopMillis       = millis();
-            uint32_t outerLoopTimeout = (mLastIv->mIsSingleframeReq) ? 100 : ((mLastIv->mCmd != AlarmData) && (mLastIv->mCmd != GridOnProFilePara)) ? 400 : 600;
-            bool isRxInit             = true;
-
-
-            while ((millis() - loopMillis) < outerLoopTimeout) {
-                uint32_t startMicros = micros();
-                while ((micros() - startMicros) < innerLoopTimeout) {  // listen (4088us or?) 5110us to each channel
-                    if (mIrqRcvd) {
-                        mIrqRcvd = false;
-
-                        if (getReceived()) { // everything received
-                            return;
-                        }
-
-                        innerLoopTimeout = 4088*5;
-                        if (isRxInit) {
-                            isRxInit = false;
-                            if (micros() - startMicros < 42000) {
-                                innerLoopTimeout = 4088*12;
-                                mRxChIdx = (mRxChIdx + 4) % RF_CHANNELS;
-                                mNrf24->setChannel(mRfChLst[mRxChIdx]);
-                            }
-                        }
-
-                        startMicros = micros();
-                    }
-                    yield();
-                }
-                // switch to next RX channel
-                mRxChIdx = (mRxChIdx + 4) % RF_CHANNELS;
+            // Alle 4 ms Rx-Kanal wechseln
+            if ((micros() - this->mTimeslotStart) <= RF_TIMESLOT_US) {
+                this->mTimeslotStart = this->mTimeslotStart - RF_TIMESLOT_US;
+                mRxChIdx = (mRxChIdx + 1) % RF_CHANNELS;
                 mNrf24->setChannel(mRfChLst[mRxChIdx]);
-                innerLoopTimeout = 4088;
-                isRxInit = false;
             }
-            // not finished but time is over
+
+            // Umschalten auf Rx
+            if ((this->mIrq_tx_ok == true) || (this->mIrq_tx_fail == true)) {
+                this->mIrq_tx_ok = false;
+                this->mIrq_tx_fail = false;
+
+                mNrf24->flush_tx();                              // empty TX FIFO
+
+                // start listening
+                mRxChIdx = (mTxChIdx + 2) % RF_CHANNELS;
+                mNrf24->setChannel(mRfChLst[mRxChIdx]);
+                mNrf24->startListening();
+            }
+
+            // Daten abholen
+            if (this->mIrq_rx_ready) {
+                this->mIrq_rx_ready = false;
+
+                if(NULL == mLastIv) // prevent reading on NULL object!
+                    return;
+
+                if (getReceived()) { // everything received
+                    return;
+                }
+            }
+
+            yield();
+
+
+
+///            if (!mIrqRcvd)
+///                return; // nothing to do
+///            mIrqRcvd = false;
+///            bool tx_ok, tx_fail, rx_ready;
+///            mNrf24->whatHappened(tx_ok, tx_fail, rx_ready);  // resets the IRQ pin to HIGH
+///            mNrf24->flush_tx();                              // empty TX FIFO
+///
+///            // start listening
+///            uint8_t chOffset = 2;
+///            mRxChIdx = (mTxChIdx + chOffset) % RF_CHANNELS;
+///            mNrf24->setChannel(mRfChLst[mRxChIdx]);
+///            mNrf24->startListening();
+///
+///            if(NULL == mLastIv) // prevent reading on NULL object!
+///                return;
+///
+///            uint32_t innerLoopTimeout = 55000;
+///            uint32_t loopMillis       = millis();
+///            uint32_t outerLoopTimeout = (mLastIv->mIsSingleframeReq) ? 100 : ((mLastIv->mCmd != AlarmData) && (mLastIv->mCmd != GridOnProFilePara)) ? 400 : 600;
+///            bool isRxInit             = true;
+///
+///
+///            while ((millis() - loopMillis) < outerLoopTimeout) {
+///                uint32_t startMicros = micros();
+///                while ((micros() - startMicros) < innerLoopTimeout) {  // listen (4088us or?) 5110us to each channel
+///                    if (mIrqRcvd) {
+///                        mIrqRcvd = false;
+///
+///                        if (getReceived()) { // everything received
+///                            return;
+///                        }
+///
+///                        innerLoopTimeout = 4088*5;
+///                        if (isRxInit) {
+///                            isRxInit = false;
+///                            if (micros() - startMicros < 42000) {
+///                                innerLoopTimeout = 4088*12;
+///                                mRxChIdx = (mRxChIdx + 4) % RF_CHANNELS;
+///                                mNrf24->setChannel(mRfChLst[mRxChIdx]);
+///                            }
+///                        }
+///
+///                        startMicros = micros();
+///                    }
+///                    yield();
+///                }
+///                // switch to next RX channel
+///                mRxChIdx = (mRxChIdx + 4) % RF_CHANNELS;
+///                mNrf24->setChannel(mRfChLst[mRxChIdx]);
+///                innerLoopTimeout = 4088;
+///                isRxInit = false;
+///            }
+///            // not finished but time is over
 
             return;
+        }
+
+        void handleIntr(void) {
+            mIrqRcvd = true;
+            mIrqOk = IRQ_OK;
+
+            mNrf24->whatHappened(this->mIrq_tx_ok, this->mIrq_tx_fail, this->mIrq_rx_ready);  // resets the IRQ pin to HIGH
+//            DPRINT(DBG_INFO, F("handleIntr"));
+//            DBGPRINT(F(" tx_ok: "));
+//            DBGPRINT(String(this->mIrq_tx_ok));
+//            DBGPRINT(F(" tx_fail: "));
+//            DBGPRINT(String(this->mIrq_tx_fail));
+//            DBGPRINT(F(" rx_ready: "));
+//            DBGPRINT(String(this->mIrq_rx_ready));
+//            DBGPRINTLN(F(""));
         }
 
         bool isChipConnected(void) {
@@ -371,6 +426,12 @@ class HmRadio : public Radio {
         nrfHal mNrfHal;
         #endif
         Inverter<> *mLastIv = NULL;
+
+        //
+        unsigned long mTimeslotStart = 0;
+        bool mIrq_tx_ok = false;
+        bool mIrq_tx_fail = false;
+        bool mIrq_rx_ready = false;
 };
 
 #endif /*__HM_RADIO_H__*/

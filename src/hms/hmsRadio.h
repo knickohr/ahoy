@@ -37,6 +37,11 @@ class CmtRadio : public Radio {
             }
         }
 
+        void handleIntr(void) {
+            mIrqRcvd = true;
+            mIrqOk = IRQ_OK;
+        }
+
         bool isChipConnected(void) {
             return mCmtAvail;
         }

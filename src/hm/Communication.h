@@ -97,6 +97,7 @@ class Communication : public CommQueue<> {
                         break;
 
                     case States::START:
+///if (q->iv->radio.get == q->iv->heuristics.txRfChId) {
                         setTs(mTimestamp);
                         if((IV_HMS == q->iv->ivGen) || (IV_HMT == q->iv->ivGen)) {
                             // frequency was changed during runtime
@@ -120,6 +121,7 @@ class Communication : public CommQueue<> {
                         if((q->cmd == AlarmData) || (q->cmd == GridOnProFilePara))
                             incrAttempt(q->cmd == AlarmData? MORE_ATTEMPS_ALARMDATA : MORE_ATTEMPS_GRIDONPROFILEPARA);
                         mState = States::WAIT;
+///}
                         break;
 
                     case States::WAIT:
@@ -865,7 +867,6 @@ class Communication : public CommQueue<> {
             }
         }
 
-
         void miComplete(Inverter<> *iv) {
             if (*mSerialDebug) {
                 DPRINT_IVID(DBG_INFO, iv->id);
@@ -934,6 +935,9 @@ class Communication : public CommQueue<> {
         bool mPrintSequenceDuration = false;
 
         //States mDebugState = States::START;
+
+        //
+        uint8_t mChIdx = 0;
 };
 
 #endif /*__COMMUNICATION_H__*/
