@@ -104,22 +104,33 @@ class HmRadio : public Radio {
             } else
                 DPRINTLN(DBG_WARN, F("WARNING! your NRF24 module can't be reached, check the wiring"));
             //
-            this->mTimeslotStart = micros();
+            _TimeslotStart = micros();
+            _mRxMode = false;
         }
 
         void loop(void) {
+            // Timeout
+            if (_TimeoutEnable == true) {
+                if ((millis() - mMillis) > _Timeout) {
+                    _mRxMode = false;
 
-            // Alle 4 ms Rx-Kanal wechseln
-            if ((micros() - this->mTimeslotStart) <= RF_TIMESLOT_US) {
-                this->mTimeslotStart = this->mTimeslotStart - RF_TIMESLOT_US;
-                mRxChIdx = (mRxChIdx + 1) % RF_CHANNELS;
-                mNrf24->setChannel(mRfChLst[mRxChIdx]);
+//                    if(NULL == mLastIv) // prevent reading on NULL object!
+//                        return;
+
+//                    mLastIv->heuristics.evalChResponse(_TxChIdx, _RxChIdx, -1);
+                }
             }
 
             // Umschalten auf Rx
-            if ((this->mIrq_tx_ok == true) || (this->mIrq_tx_fail == true)) {
-                this->mIrq_tx_ok = false;
-                this->mIrq_tx_fail = false;
+            if ((_Irq_tx_ok == true) || (_Irq_tx_fail == true)) {
+//                DPRINT(DBG_INFO, F("handleIntr"));
+//                DBGPRINT(F(" tx_ok: "));
+//                DBGPRINT(String(_Irq_tx_ok));
+//                DBGPRINT(F(" tx_fail: "));
+//                DBGPRINT(String(_Irq_tx_fail));
+//                DBGPRINTLN(F(""));
+                _Irq_tx_ok = false;
+                _Irq_tx_fail = false;
 
                 mNrf24->flush_tx();                              // empty TX FIFO
 
@@ -127,16 +138,41 @@ class HmRadio : public Radio {
                 mRxChIdx = (mTxChIdx + 2) % RF_CHANNELS;
                 mNrf24->setChannel(mRfChLst[mRxChIdx]);
                 mNrf24->startListening();
+
+                _mRxMode = true;
+                _TimeslotStart = micros();
+
+                if(NULL == mLastIv) // prevent reading on NULL object!
+                    return;
+
+                _Timeout = (mLastIv->mIsSingleframeReq) ? 100 : ((mLastIv->mCmd != AlarmData) && (mLastIv->mCmd != GridOnProFilePara)) ? 400 : 600;
+                _TimeoutEnable = true;
+            }
+
+            // Alle 4 ms Rx-Kanal wechseln
+            if (_mRxMode == true) {
+                if ((micros() - _TimeslotStart) >= RF_TIMESLOT_US) {
+                    _TimeslotStart = _TimeslotStart + RF_TIMESLOT_US;
+                    mRxChIdx = (mRxChIdx + 1) % RF_CHANNELS;
+                    mNrf24->stopListening();
+                    mNrf24->setChannel(mRfChLst[mRxChIdx]);
+                    mNrf24->startListening();
+                }
             }
 
             // Daten abholen
-            if (this->mIrq_rx_ready) {
-                this->mIrq_rx_ready = false;
+            if (_Irq_rx_ready) {
+//                DPRINT(DBG_INFO, F("handleIntr"));
+//                DBGPRINT(F(" rx_ready: "));
+//                DBGPRINT(String(_Irq_rx_ready));
+//                DBGPRINTLN(F(""));
+                _Irq_rx_ready = false;
 
                 if(NULL == mLastIv) // prevent reading on NULL object!
                     return;
 
                 if (getReceived()) { // everything received
+                    _mRxMode = false;
                     return;
                 }
             }
@@ -206,14 +242,15 @@ class HmRadio : public Radio {
             mIrqRcvd = true;
             mIrqOk = IRQ_OK;
 
-            mNrf24->whatHappened(this->mIrq_tx_ok, this->mIrq_tx_fail, this->mIrq_rx_ready);  // resets the IRQ pin to HIGH
+            mNrf24->whatHappened(_Irq_tx_ok, _Irq_tx_fail, _Irq_rx_ready);  // resets the IRQ pin to HIGH
+
 //            DPRINT(DBG_INFO, F("handleIntr"));
 //            DBGPRINT(F(" tx_ok: "));
-//            DBGPRINT(String(this->mIrq_tx_ok));
+//            DBGPRINT(String(_Irq_tx_ok));
 //            DBGPRINT(F(" tx_fail: "));
-//            DBGPRINT(String(this->mIrq_tx_fail));
+//            DBGPRINT(String(_Irq_tx_fail));
 //            DBGPRINT(F(" rx_ready: "));
-//            DBGPRINT(String(this->mIrq_rx_ready));
+//            DBGPRINT(String(_Irq_rx_ready));
 //            DBGPRINTLN(F(""));
         }
 
@@ -319,8 +356,8 @@ class HmRadio : public Radio {
 
     private:
         inline bool getReceived(void) {
-            bool tx_ok, tx_fail, rx_ready;
-            mNrf24->whatHappened(tx_ok, tx_fail, rx_ready); // resets the IRQ pin to HIGH
+////            bool tx_ok, tx_fail, rx_ready;
+////            mNrf24->whatHappened(tx_ok, tx_fail, rx_ready); // resets the IRQ pin to HIGH
 
             bool isLastPackage = false;
             while(mNrf24->available()) {
@@ -428,10 +465,15 @@ class HmRadio : public Radio {
         Inverter<> *mLastIv = NULL;
 
         //
-        unsigned long mTimeslotStart = 0;
-        bool mIrq_tx_ok = false;
-        bool mIrq_tx_fail = false;
-        bool mIrq_rx_ready = false;
+        unsigned long _TimeslotStart = 0;
+        bool _Irq_tx_ok = false;
+        bool _Irq_tx_fail = false;
+        bool _Irq_rx_ready = false;
+        bool _mRxMode = false;
+
+        //
+        bool _TimeoutEnable = false;
+        unsigned long _Timeout = 0;
 };
 
 #endif /*__HM_RADIO_H__*/
