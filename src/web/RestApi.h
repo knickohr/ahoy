@@ -1,6 +1,6 @@
 //-----------------------------------------------------------------------------
 // 2024 Ahoy, https://ahoydtu.de
-// Creative Commons - http://creativecommons.org/licenses/by-nc-sa/3.0/de/
+// Creative Commons - https://creativecommons.org/licenses/by-nc-sa/4.0/deed
 //-----------------------------------------------------------------------------
 
 #ifndef __WEB_API_H__
@@ -15,12 +15,15 @@
 #include "../appInterface.h"
 #include "../hm/hmSystem.h"
 #include "../utils/helper.h"
+#include "lang.h"
 #include "AsyncJson.h"
 #if defined(ETHERNET)
 #include "AsyncWebServer_ESP32_W5500.h"
 #else
 #include "ESPAsyncWebServer.h"
 #endif
+
+#include "plugins/history.h"
 
 #if defined(F) && defined(ESP32)
 #undef F
@@ -103,6 +106,8 @@ class RestApi {
             else if(path == "setup/getip")    getWifiIp(root);
             #endif /* !defined(ETHERNET) */
             else if(path == "live")           getLive(request,root);
+            else if (path == "powerHistory")  getPowerHistory(request, root);
+            else if (path == "yieldDayHistory") getYieldDayHistory(request, root);
             else {
                 if(path.substring(0, 12) == "inverter/id/")
                     getInverter(root, request->url().substring(17).toInt());
@@ -168,15 +173,15 @@ class RestApi {
                     root[F("success")] = setSetup(obj, root);
                 else {
                     root[F("success")] = false;
-                    root[F("error")]   = "Path not found: " + path;
+                    root[F("error")]   = F(PATH_NOT_FOUND) + path;
                 }
             } else {
                 switch (err.code()) {
                     case DeserializationError::Ok: break;
-                    case DeserializationError::IncompleteInput: root[F("error")] = F("Incomplete input");       break;
-                    case DeserializationError::InvalidInput:    root[F("error")] = F("Invalid input");          break;
-                    case DeserializationError::NoMemory:        root[F("error")] = F("Not enough memory");      break;
-                    default:                                    root[F("error")] = F("Deserialization failed"); break;
+                    case DeserializationError::IncompleteInput: root[F("error")] = F(INCOMPLETE_INPUT); break;
+                    case DeserializationError::InvalidInput:    root[F("error")] = F(INVALID_INPUT);    break;
+                    case DeserializationError::NoMemory:        root[F("error")] = F(NOT_ENOUGH_MEM);   break;
+                    default:                                    root[F("error")] = F(DESER_FAILED);     break;
                 }
             }
 
@@ -247,10 +252,14 @@ class RestApi {
             obj[F("ts_uptime")]   = mApp->getUptime();
             obj[F("ts_now")]      = mApp->getTimestamp();
             obj[F("version")]     = String(mApp->getVersion());
+            obj[F("modules")]     = String(mApp->getVersionModules());
             obj[F("build")]       = String(AUTO_GIT_HASH);
+            obj[F("env")]         = String(ENV_NAME);
             obj[F("menu_prot")]   = mApp->getProtection(request);
             obj[F("menu_mask")]   = (uint16_t)(mConfig->sys.protectionMask );
             obj[F("menu_protEn")] = (bool) (strlen(mConfig->sys.adminPwd) > 0);
+            obj[F("cst_lnk")]     = String(mConfig->plugin.customLink);
+            obj[F("cst_lnk_txt")] = String(mConfig->plugin.customLinkText);
 
         #if defined(ESP32)
             obj[F("esp_type")]    = F("ESP32");
@@ -319,7 +328,9 @@ class RestApi {
         void getHtmlSystem(AsyncWebServerRequest *request, JsonObject obj) {
             getSysInfo(request, obj.createNestedObject(F("system")));
             getGeneric(request, obj.createNestedObject(F("generic")));
-            obj[F("html")] = F("<a href=\"/factory\" class=\"btn\">AhoyFactory Reset</a><br/><br/><a href=\"/reboot\" class=\"btn\">Reboot</a>");
+            char tmp[200];
+            snprintf(tmp, 200, "<a href=\"/factory\" class=\"btn\">%s</a><br/><br/><a href=\"/reboot\" class=\"btn\">%s</a>", FACTORY_RESET, BTN_REBOOT);
+            obj[F("html")] = String(tmp);
         }
 
         void getHtmlLogout(AsyncWebServerRequest *request, JsonObject obj) {
@@ -396,7 +407,7 @@ class RestApi {
         void getIvStatistis(JsonObject obj, uint8_t id) {
             Inverter<> *iv = mSys->getInverterByPos(id);
             if(NULL == iv) {
-                obj[F("error")] = F("inverter not found!");
+                obj[F("error")] = F(INV_NOT_FOUND);
                 return;
             }
             obj[F("name")]           = String(iv->config->name);
@@ -415,7 +426,7 @@ class RestApi {
         void getIvPowerLimitAck(JsonObject obj, uint8_t id) {
             Inverter<> *iv = mSys->getInverterByPos(id);
             if(NULL == iv) {
-                obj[F("error")] = F("inverter not found!");
+                obj[F("error")] = F(INV_NOT_FOUND);
                 return;
             }
             obj["ack"] = (bool)iv->powerLimitAck;
@@ -468,7 +479,7 @@ class RestApi {
         void getInverter(JsonObject obj, uint8_t id) {
             Inverter<> *iv = mSys->getInverterByPos(id);
             if(NULL == iv) {
-                obj[F("error")] = F("inverter not found!");
+                obj[F("error")] = F(INV_NOT_FOUND);
                 return;
             }
 
@@ -531,7 +542,7 @@ class RestApi {
         void getIvAlarms(JsonObject obj, uint8_t id) {
             Inverter<> *iv = mSys->getInverterByPos(id);
             if(NULL == iv) {
-                obj[F("error")] = F("inverter not found!");
+                obj[F("error")] = F(INV_NOT_FOUND);
                 return;
             }
 
@@ -554,7 +565,7 @@ class RestApi {
         void getIvVersion(JsonObject obj, uint8_t id) {
             Inverter<> *iv = mSys->getInverterByPos(id);
             if(NULL == iv) {
-                obj[F("error")] = F("inverter not found!");
+                obj[F("error")] = F(INV_NOT_FOUND);
                 return;
             }
 
@@ -726,14 +737,10 @@ class RestApi {
             obj[F("disNightComm")] = disNightCom;
 
             JsonArray warn = obj.createNestedArray(F("warnings"));
-            if(!mRadioNrf->isChipConnected() && mConfig->nrf.enabled)
-                warn.add(F("your NRF24 module can't be reached, check the wiring, pinout and enable"));
-            if(!mApp->getSettingsValid())
-                warn.add(F("your settings are invalid"));
             if(mApp->getRebootRequestState())
-                warn.add(F("reboot your ESP to apply all your configuration changes"));
+                warn.add(F(REBOOT_ESP_APPLY_CHANGES));
             if(0 == mApp->getTimestamp())
-                warn.add(F("time not set. No communication to inverter possible"));
+                warn.add(F(TIME_NOT_SET));
         }
 
         void getSetup(AsyncWebServerRequest *request, JsonObject obj) {
@@ -785,11 +792,43 @@ class RestApi {
             }
         }
 
+        void getPowerHistory(AsyncWebServerRequest *request, JsonObject obj) {
+            getGeneric(request, obj.createNestedObject(F("generic")));
+            #if defined(ENABLE_HISTORY)
+            obj[F("refresh")] = mConfig->inst.sendInterval;
+            uint16_t max = 0;
+            for (uint16_t fld = 0; fld < HISTORY_DATA_ARR_LENGTH; fld++) {
+                uint16_t value = mApp->getHistoryValue((uint8_t)HistoryStorageType::POWER, fld);
+                obj[F("value")][fld] = value;
+                if (value > max)
+                    max = value;
+            }
+            obj[F("max")] = max;
+            obj[F("maxDay")] = mApp->getHistoryMaxDay();
+            #endif /*ENABLE_HISTORY*/
+        }
+
+        void getYieldDayHistory(AsyncWebServerRequest *request, JsonObject obj) {
+            getGeneric(request, obj.createNestedObject(F("generic")));
+            #if defined(ENABLE_HISTORY)
+            obj[F("refresh")] = 86400;  // 1 day
+            uint16_t max = 0;
+            for (uint16_t fld = 0; fld < HISTORY_DATA_ARR_LENGTH; fld++) {
+                uint16_t value = mApp->getHistoryValue((uint8_t)HistoryStorageType::YIELD, fld);
+                obj[F("value")][fld] = value;
+                if (value > max)
+                    max = value;
+            }
+            obj[F("max")] = max;
+            #endif /*ENABLE_HISTORY*/
+        }
+
+
         bool setCtrl(JsonObject jsonIn, JsonObject jsonOut) {
             Inverter<> *iv = mSys->getInverterByPos(jsonIn[F("id")]);
             bool accepted = true;
             if(NULL == iv) {
-                jsonOut[F("error")] = F("inverter index invalid: ") + jsonIn[F("id")].as<String>();
+                jsonOut[F("error")] = F(INV_INDEX_INVALID) + jsonIn[F("id")].as<String>();
                 return false;
             }
             jsonOut[F("id")] = jsonIn[F("id")];
@@ -810,16 +849,18 @@ class RestApi {
                     iv->powerLimit[1] = AbsolutNonPersistent;
 
                 accepted = iv->setDevControlRequest(ActivePowerContr);
+                if(accepted)
+                    mApp->triggerTickSend();
             } else if(F("dev") == jsonIn[F("cmd")]) {
                 DPRINTLN(DBG_INFO, F("dev cmd"));
                 iv->setDevCommand(jsonIn[F("val")].as<int>());
             } else {
-                jsonOut[F("error")] = F("unknown cmd: '") + jsonIn["cmd"].as<String>() + "'";
+                jsonOut[F("error")] = F(UNKNOWN_CMD) + jsonIn["cmd"].as<String>() + "'";
                 return false;
             }
 
             if(!accepted) {
-                jsonOut[F("error")] = F("inverter does not accept dev control request at this moment");
+                jsonOut[F("error")] = F(INV_DOES_NOT_ACCEPT_LIMIT_AT_MOMENT);
                 return false;
             }
 
@@ -868,7 +909,7 @@ class RestApi {
                 iv->config->add2Total   = jsonIn[F("add2total")];
                 mApp->saveSettings(false); // without reboot
             } else {
-                jsonOut[F("error")] = F("unknown cmd");
+                jsonOut[F("error")] = F(UNKNOWN_CMD);
                 return false;
             }
 

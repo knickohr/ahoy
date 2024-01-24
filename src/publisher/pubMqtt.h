@@ -8,6 +8,7 @@
 #ifndef __PUB_MQTT_H__
 #define __PUB_MQTT_H__
 
+#if defined(ENABLE_MQTT)
 #ifdef ESP8266
     #include <ESP8266WiFi.h>
 #elif defined(ESP32)
@@ -43,7 +44,6 @@ class PubMqtt {
             memset(mLastIvState, (uint8_t)InverterStatus::OFF, MAX_NUM_INVERTERS);
             memset(mIvLastRTRpub, 0, MAX_NUM_INVERTERS * 4);
             mLastAnyAvail = false;
-            mZeroValues = false;
         }
 
         ~PubMqtt() { }
@@ -134,7 +134,7 @@ class PubMqtt {
             #endif
         }
 
-        bool tickerSun(uint32_t sunrise, uint32_t sunset, int16_t offsM, int16_t offsE) {
+        bool tickerSun(uint32_t sunrise, uint32_t sunset, int16_t offsM, int16_t offsE, bool isSunrise = false) {
             if (!mClient.connected())
                 return false;
 
@@ -153,9 +153,11 @@ class PubMqtt {
                 publish(mSubTopic, ((iv->commEnabled) ? dict[STR_TRUE] : dict[STR_FALSE]), true);
             }
 
-
             snprintf(mSubTopic, 32 + MAX_NAME_LENGTH, "comm_disabled");
             publish(mSubTopic, (((*mUtcTimestamp > (sunset + offsE)) || (*mUtcTimestamp < (sunrise + offsM))) ? dict[STR_TRUE] : dict[STR_FALSE]), true);
+
+            if(isSunrise)
+                mSendIvData.resetYieldDay();
 
             return true;
         }
@@ -237,10 +239,6 @@ class PubMqtt {
                 snprintf(mSubTopic, 32 + MAX_NAME_LENGTH, "%s/%s", iv->config->name, subtopics[MQTT_ACK_PWR_LMT]);
                 publish(mSubTopic, "true", true, true, QOS_2);
             }
-        }
-
-        void setZeroValuesEnable(void) {
-            mZeroValues = true;
         }
 
     private:
@@ -592,8 +590,7 @@ class PubMqtt {
             if(mSendList.empty())
                 return;
 
-            mSendIvData.start(mZeroValues);
-            mZeroValues = false;
+            mSendIvData.start();
             mLastAnyAvail = anyAvail;
         }
 
@@ -612,7 +609,6 @@ class PubMqtt {
         std::array<bool, MAX_NUM_INVERTERS> mSendAlarm{};
         subscriptionCb mSubscriptionCb;
         bool mLastAnyAvail;
-        bool mZeroValues;
         InverterStatus mLastIvState[MAX_NUM_INVERTERS];
         uint32_t mIvLastRTRpub[MAX_NUM_INVERTERS];
         uint16_t mIntervalTimeout;
@@ -628,4 +624,5 @@ class PubMqtt {
         discovery_t mDiscovery;
 };
 
+#endif /*ENABLE_MQTT*/
 #endif /*__PUB_MQTT_H__*/

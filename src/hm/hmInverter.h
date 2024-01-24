@@ -1,5 +1,5 @@
 //-----------------------------------------------------------------------------
-// 2024 Ahoy, https://www.mikrocontroller.net/topic/525778
+// 2024 Ahoy, https://ahoydtu.de
 // Creative Commons - http://creativecommons.org/licenses/by-nc-sa/4.0/deed
 //-----------------------------------------------------------------------------
 
@@ -14,6 +14,7 @@
 #define MAX_GRID_LENGTH     150
 
 #include "hmDefines.h"
+#include "../appInterface.h"
 #include "HeuristicInv.h"
 #include "../hms/hmsDefines.h"
 #include <memory>
@@ -148,8 +149,9 @@ class Inverter {
         bool          commEnabled;       // 'pause night communication' sets this field to false
         uint32_t      tsMaxAcPower;      // holds the timestamp when the MaxAC power was seen
 
-        static uint32_t *timestamp;      // system timestamp
+        static uint32_t  *timestamp;     // system timestamp
         static cfgInst_t *generalConfig; // general inverter configuration from setup
+        //static IApp      *app;           // pointer to app interface
 
     public:
 
@@ -212,16 +214,22 @@ class Inverter {
                         cb(RealTimeRunData_Debug, false);    // get live data
                 }
             } else { // MI
-                if(0 == getFwVersion())
+                if(0 == getFwVersion()) {
+                    mIvRxCnt +=2;
                     cb(0x0f, false);    // get firmware version; for MI, this makes part of polling the device software and hardware version number
-                else {
+                } else {
                     record_t<> *rec = getRecordStruct(InverterDevInform_Simple);
-                    if (getChannelFieldValue(CH0, FLD_PART_NUM, rec) == 0)
+                    if (getChannelFieldValue(CH0, FLD_PART_NUM, rec) == 0) {
                         cb(0x0f, false); // hard- and firmware version for missing HW part nr, delivered by frame 1
-                    else if((getChannelFieldValue(CH0, FLD_GRID_PROFILE_CODE, rec) == 0) && generalConfig->readGrid) // read grid profile
+                        mIvRxCnt +=2;
+                    } else if((getChannelFieldValue(CH0, FLD_GRID_PROFILE_CODE, rec) == 0) && generalConfig->readGrid) // read grid profile
                         cb(0x10, false); // legacy GPF command
-                    else
+                    else {
                         cb(((type == INV_TYPE_4CH) ? MI_REQ_4CH : MI_REQ_CH1), false);
+                        mGetLossInterval++;
+                        if (type != INV_TYPE_4CH)
+                            mIvRxCnt++;  // statistics workaround...
+                    }
                 }
             }
         }
@@ -280,6 +288,7 @@ class Inverter {
             if(isConnected) {
                 mDevControlRequest = true;
                 devControlCmd = cmd;
+                //app->triggerTickSend(); // done in RestApi.h, because of "chicken-and-egg problem ;-)"
             }
             return isConnected;
         }
@@ -619,7 +628,7 @@ class Inverter {
                         radioStatistics.dtuSent = txCnt + ((uint16_t)65535 - mIvTxCnt) + 1;
                     else
                         radioStatistics.dtuSent = txCnt - mIvTxCnt;
-                    
+
                     radioStatistics.dtuLoss = radioStatistics.dtuSent - mDtuRxCnt;
 
                     DPRINT_IVID(DBG_INFO, id);
@@ -831,15 +840,16 @@ class Inverter {
         bool mDevControlRequest; // true if change needed
         uint8_t mGridLen = 0;
         uint8_t mGridProfile[MAX_GRID_LENGTH];
-        uint8_t mGetLossInterval;  // request iv every AHOY_GET_LOSS_INTERVAL RealTimeRunData_Debug
-        uint16_t mIvRxCnt  = 0;
-        uint16_t mIvTxCnt  = 0;
         uint8_t mAlarmNxtWrPos = 0; // indicates the position in array (rolling buffer)
         bool mNextLive = true; // first read live data after booting up then version etc.
 
     public:
         uint16_t mDtuRxCnt = 0;
         uint16_t mDtuTxCnt = 0;
+        uint8_t  mGetLossInterval = 0;  // request iv every AHOY_GET_LOSS_INTERVAL RealTimeRunData_Debug
+        uint16_t mIvRxCnt  = 0;
+        uint16_t mIvTxCnt  = 0;
+
 };
 
 template <class REC_TYP>
@@ -951,8 +961,10 @@ static T calcMaxPowerAcCh0(Inverter<> *iv, uint8_t arg0) {
                 acMaxPower = iv->getValue(i, rec);
             }
         }
-        if(acPower > acMaxPower)
+        if(acPower > acMaxPower) {
+            iv->tsMaxAcPower = *iv->timestamp;
             return acPower;
+        }
     }
     return acMaxPower;
 }
@@ -971,10 +983,8 @@ static T calcMaxPowerDc(Inverter<> *iv, uint8_t arg0) {
                 dcMaxPower = iv->getValue(i, rec);
             }
         }
-        if(dcPower > dcMaxPower) {
-            iv->tsMaxAcPower = *iv->timestamp;
+        if(dcPower > dcMaxPower)
             return dcPower;
-        }
     }
     return dcMaxPower;
 }

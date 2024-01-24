@@ -12,31 +12,27 @@ class DisplayMono128X64 : public DisplayMono {
             mExtra = 0;
         }
 
-        void config(bool enPowerSave, uint8_t screenSaver, uint8_t lum, uint8_t graph_ratio, uint8_t graph_size) {
-            mEnPowerSave = enPowerSave;
-            mScreenSaver = screenSaver;
-            mLuminance = lum;
-            mGraphRatio = graph_ratio;
-            mGraphSize  = graph_size;
+        void config(display_t *cfg) {
+            mCfg = cfg;
         }
 
-        void init(uint8_t type, uint8_t rotation, uint8_t cs, uint8_t dc, uint8_t reset, uint8_t clock, uint8_t data, DisplayData *displayData) {
-            u8g2_cb_t *rot = (u8g2_cb_t *)((rotation != 0x00) ? U8G2_R2 : U8G2_R0);
-            switch (type) {
+        void init(DisplayData *displayData) {
+            u8g2_cb_t *rot = (u8g2_cb_t *)(( mCfg->rot != 0x00) ? U8G2_R2 : U8G2_R0);
+            switch (mCfg->type) {
                 case 1:
-                    monoInit(new U8G2_SSD1306_128X64_NONAME_F_HW_I2C(rot, reset, clock, data), type, displayData);
+                    monoInit(new U8G2_SSD1306_128X64_NONAME_F_HW_I2C(rot, 0xff, mCfg->disp_clk, mCfg->disp_data), displayData);
                     break;
                 case 2:
-                    monoInit(new U8G2_SH1106_128X64_NONAME_F_HW_I2C(rot, reset, clock, data), type, displayData);
+                    monoInit(new U8G2_SH1106_128X64_NONAME_F_HW_I2C(rot, 0xff, mCfg->disp_clk, mCfg->disp_data), displayData);
                     break;
                 case 6:
                 default:
-                    monoInit(new U8G2_SSD1309_128X64_NONAME0_F_HW_I2C(rot, reset, clock, data), type, displayData);
+                    monoInit(new U8G2_SSD1309_128X64_NONAME0_F_HW_I2C(rot, 0xff, mCfg->disp_clk, mCfg->disp_data), displayData);
                     break;
             }
             calcLinePositions();
 
-            switch(mGraphSize) { // var opts2 = [[0, "Line 1 - 2"], [1, "Line 2 - 3"], [2, "Line 1 - 3"], [3, "Line 2 - 4"], [4, "Line 1 - 4"]];
+            switch(mCfg->graph_size) { // var opts2 = [[0, "Line 1 - 2"], [1, "Line 2 - 3"], [2, "Line 1 - 3"], [3, "Line 2 - 4"], [4, "Line 1 - 4"]];
                 case 0:
                     graph_first_line = 1;
                     graph_last_line = 2;
@@ -60,9 +56,10 @@ class DisplayMono128X64 : public DisplayMono {
                     break;
             }
 
-            widthShrink = (mScreenSaver == 1) ? pixelShiftRange : 0;  // shrink graphwidth for pixelshift screensaver
+            widthShrink = (mCfg->screenSaver == 1) ? pixelShiftRange : 0;  // shrink graphwidth for pixelshift screensaver
 
-            initPowerGraph(mDispWidth - 22 - widthShrink, mLineYOffsets[graph_last_line] - mLineYOffsets[graph_first_line - 1] - 2);
+            if (mCfg->graph_ratio > 0)
+                initPowerGraph(mDispWidth - 22 - widthShrink, mLineYOffsets[graph_last_line] - mLineYOffsets[graph_first_line - 1] - 2);
 
             printText("Ahoy!", l_Ahoy, 0xff);
             printText("ahoydtu.de", l_Website, 0xff);
@@ -92,9 +89,8 @@ class DisplayMono128X64 : public DisplayMono {
             calcPixelShift(pixelShiftRange);
 
             // add new power data to power graph
-            if (mDisplayData->nrProducing > 0) {
+            if (mDisplayData->nrProducing > 0)
                 addPowerGraphEntry(mDisplayData->totalPower);
-            }
 
             // print Date and time
             if (0 != mDisplayData->utcTs)
@@ -176,7 +172,7 @@ class DisplayMono128X64 : public DisplayMono {
                 printText(mFmtText, l_YieldTotal, 0xff);
             }
 
-            if (mDispSwitchState == DispSwitchState::GRAPH) {
+            if ((mCfg->graph_ratio > 0) && (mDispSwitchState == DispSwitchState::GRAPH)) {
                 // plot power graph
                 plotPowerGraph((mDispWidth - mPgWidth) / 2 + mPixelshift, mLineYOffsets[graph_last_line] - 1);
             }
@@ -196,13 +192,13 @@ class DisplayMono128X64 : public DisplayMono {
             mDisplay->setFont(u8g2_font_ncenB10_symbols10_ahoy);
             char sym[]=" ";
             sym[0] = mDisplayData->RadioSymbol?'A':'E';                 // NRF
-            mDisplay->drawStr(widthShrink / 2 + mPixelshift, mLineYOffsets[l_RSSI], sym);
+            mDisplay->drawStr((widthShrink / 2) + mPixelshift, mLineYOffsets[l_RSSI], sym);
 
             if (mDisplayData->MQTTSymbol)
                 sym[0] = 'J'; // MQTT
             else
                 sym[0] = mDisplayData->WifiSymbol?'B':'F';              // Wifi
-            mDisplay->drawStr(mDispWidth - mDisplay->getStrWidth(sym) - widthShrink / 2 + mPixelshift, mLineYOffsets[l_RSSI], sym);
+            mDisplay->drawStr(mDispWidth - mDisplay->getStrWidth(sym) - (widthShrink / 2) + mPixelshift, mLineYOffsets[l_RSSI], sym);
             mDisplay->sendBuffer();
 
             mExtra++;
@@ -244,8 +240,8 @@ class DisplayMono128X64 : public DisplayMono {
                 mLineYOffsets[i] = yOff;
                 dsc = mDisplay->getDescent();
                 yOff -= dsc;
-                if (l_Time == i)   // prevent time and status line to touch
-                    yOff++;     // -> one pixels space
+                if (l_Time == i) // prevent time and status line to touch
+                    yOff++;      // -> one pixels space
                 i++;
             } while(l_MAX_LINES>i);
         }

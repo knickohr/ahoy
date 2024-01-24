@@ -1,6 +1,8 @@
 #ifndef __DISPLAY__
 #define __DISPLAY__
 
+#if defined(PLUGIN_DISPLAY)
+
 #include <Timezone.h>
 #include <U8g2lib.h>
 
@@ -50,12 +52,11 @@ class Display {
                 mEpaper.init(mCfg->type, mCfg->disp_cs, mCfg->disp_dc, mCfg->disp_reset, mCfg->disp_busy, mCfg->disp_clk, mCfg->disp_data, mUtcTs, mDisplayData.version);
                 break;
 #endif
-
             default: mMono = NULL; break;
         }
         if(mMono) {
-            mMono->config(mCfg->pwrSaveAtIvOffline, mCfg->screenSaver, mCfg->contrast, mCfg->graph_ratio, mCfg->graph_size);
-            mMono->init(mCfg->type, mCfg->rot, mCfg->disp_cs, mCfg->disp_dc, 0xff, mCfg->disp_clk, mCfg->disp_data, &mDisplayData);
+            mMono->config(mCfg);
+            mMono->init(&mDisplayData);
         }
 
         // setup PIR pin for motion sensor
@@ -78,7 +79,7 @@ class Display {
         bool request_refresh = false;
 
         if (mMono != NULL)
-            request_refresh = mMono->loop(mCfg->contrast, motionSensorActive());
+            request_refresh = mMono->loop(motionSensorActive());
 
         if (mNewPayload || (((++mLoopCnt) % 5) == 0) || request_refresh) {
             DataScreen();
@@ -238,5 +239,7 @@ class Display {
 #endif
     DisplayMono *mMono;
 };
+
+#endif /*PLUGIN_DISPLAY*/
 
 #endif /*__DISPLAY__*/

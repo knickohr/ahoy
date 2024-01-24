@@ -20,28 +20,28 @@
 #include "Display_data.h"
 #include "../../utils/dbg.h"
 #include "../../utils/timemonitor.h"
+#include "../../config/settings.h"
 
 class DisplayMono {
     public:
         DisplayMono() {};
 
-        virtual void init(uint8_t type, uint8_t rot, uint8_t cs, uint8_t dc, uint8_t reset, uint8_t clock, uint8_t data, DisplayData *displayData) = 0;
-        virtual void config(bool enPowerSave, uint8_t screenSaver, uint8_t lum, uint8_t graph_ratio, uint8_t graph_size) = 0;
+        virtual void init(DisplayData *displayData) = 0;
+        virtual void config(display_t *cfg) = 0;
         virtual void disp(void) = 0;
 
         // Common loop function, manages display on/off functions for powersave and screensaver with motionsensor
         // can be overridden by subclasses
-        virtual bool loop(uint8_t lum, bool motion) {
+        virtual bool loop(bool motion) {
 
-            bool dispConditions = (!mEnPowerSave || (mDisplayData->nrProducing > 0)) &&
-                                         ((mScreenSaver != 2) || motion); // screensaver 2 .. motionsensor
+            bool dispConditions = (!mCfg->pwrSaveAtIvOffline || (mDisplayData->nrProducing > 0)) &&
+                                         ((mCfg->screenSaver != 2) || motion); // screensaver 2 .. motionsensor
 
             if (mDisplayActive) {
                 if (!dispConditions) {
                      if (mDisplayTime.isTimeout()) { // switch display off after timeout
                           mDisplayActive = false;
                           mDisplay->setPowerSave(true);
-                          DBGPRINTLN("**** Display off ****");
                      }
                 }
                 else
@@ -52,16 +52,15 @@ class DisplayMono {
                      mDisplayActive = true;
                      mDisplayTime.reStartTimeMonitor(); // switch display on
                      mDisplay->setPowerSave(false);
-                     DBGPRINTLN("**** Display on ****");
                 }
             }
 
-            if(mLuminance != lum) {
-                mLuminance = lum;
+            if(mLuminance != mCfg->contrast) {
+                mLuminance = mCfg->contrast;
                 mDisplay->setContrast(mLuminance);
             }
 
-            return(monoMaintainDispSwitchState());
+            return(monoMaintainDispSwitchState());  // return flag, if display content should be updated immediately
         }
 
     protected:
@@ -71,43 +70,9 @@ class DisplayMono {
         };
 
     protected:
-        U8G2* mDisplay;
-        DisplayData *mDisplayData;
-
-        float  *mPgData = nullptr;
-        uint8_t mPgWidth = 0;
-        uint8_t mPgHeight = 0;
-        float   mPgMaxPwr = 0.0;
-        uint32_t mPgPeriod = 0; // seconds
-        uint32_t mPgTimeOfDay = 0;
-        uint8_t  mPgLastPos = 0;
-
-        uint8_t mType;
-        uint16_t mDispWidth;
-        uint16_t mDispHeight;
-
-        bool mEnPowerSave;
-        uint8_t mScreenSaver = 1;  // 0 .. off; 1 .. pixelShift; 2 .. motionsensor
-        uint8_t mLuminance;
-        uint8_t mGraphRatio;
-        uint8_t mGraphSize;
-
-        uint8_t mLoopCnt;
-        uint8_t mLineXOffsets[5] = {};
-        uint8_t mLineYOffsets[5] = {};
-
-        uint8_t mExtra;
-        int8_t  mPixelshift=0;
-        TimeMonitor mDisplayTime = TimeMonitor(1000 * DISP_DEFAULT_TIMEOUT, true);
-        TimeMonitor mDispSwitchTime = TimeMonitor();
-        DispSwitchState mDispSwitchState = DispSwitchState::TEXT;
-        bool mDisplayActive = true;  // always start with display on
-        char mFmtText[DISP_FMT_TEXT_LEN];
-
         // Common initialization function to be called by subclasses
-        void monoInit(U8G2* display, uint8_t type, DisplayData *displayData) {
+        void monoInit(U8G2* display, DisplayData *displayData) {
             mDisplay = display;
-            mType = type;
             mDisplayData = displayData;
             mDisplay->begin();
             mDisplay->setPowerSave(false);  // always start with display on
@@ -116,26 +81,156 @@ class DisplayMono {
             mDispWidth = mDisplay->getDisplayWidth();
             mDispHeight = mDisplay->getDisplayHeight();
             mDispSwitchTime.stopTimeMonitor();
-            if (mGraphRatio == 100)           // if graph ratio is 100% start in graph mode
+            if (100 == mCfg->graph_ratio)           // if graph ratio is 100% start in graph mode
                 mDispSwitchState = DispSwitchState::GRAPH;
-            else if (mGraphRatio != 0)
-                mDispSwitchTime.startTimeMonitor(150 * (100 - mGraphRatio));  // start display mode change only if ratio is neither 0 nor 100
+            else if (mCfg->graph_ratio != 0)
+                mDispSwitchTime.startTimeMonitor(150 * (100 - mCfg->graph_ratio));  // start display mode change only if ratio is neither 0 nor 100
         }
 
+        // pixelshift screensaver with wipe effect
+        void calcPixelShift(int range) {
+            int8_t mod = (millis() / 10000) % ((range >> 1) << 2);
+            mPixelshift = (1 == mCfg->screenSaver) ? ((mod < range) ? mod - (range >> 1) : -(mod - range - (range >> 1) + 1)) : 0;
+        }
+
+    protected:
+        enum class PowerGraphState {
+            NO_TIME_SYNC,
+            IN_PERIOD,
+            WAIT_4_NEW_PERIOD,
+            WAIT_4_RESTART
+        };
+
+        // initialize power graph and allocate data buffer based on pixel width
+        void initPowerGraph(uint8_t width, uint8_t height) {
+            DBGPRINTLN(F("---- Init Power Graph ----"));
+            mPgWidth = width;
+            mPgHeight = height;
+            mPgData = new float[mPgWidth];
+            mPgState = PowerGraphState::NO_TIME_SYNC;
+            resetPowerGraph();
+        }
+
+        // add new value to power graph and maintain state engine for period times
+        void addPowerGraphEntry(float val) {
+            if (nullptr == mPgData)  // power graph not initialized
+                return;
+
+            bool storeStartEndTimes = false;
+            bool store_entry = false;
+            switch(mPgState) {
+                case PowerGraphState::NO_TIME_SYNC:  
+                    if ((mDisplayData->pGraphStartTime > 0)
+                        && (mDisplayData->pGraphEndTime > 0)                      // wait until period data is available ...
+                        && (mDisplayData->utcTs >= mDisplayData->pGraphStartTime)
+                        && (mDisplayData->utcTs < mDisplayData->pGraphEndTime)) // and current time is in period
+                    {
+                        storeStartEndTimes = true;                                     // period was received -> store
+                        store_entry = true;
+                        mPgState = PowerGraphState::IN_PERIOD;
+                    }
+                    break;
+                case PowerGraphState::IN_PERIOD:
+                    if (mDisplayData->utcTs > mPgEndTime)                   // check if end of day is reached ...
+                        mPgState = PowerGraphState::WAIT_4_NEW_PERIOD;      // then wait for new period setting
+                    else
+                        store_entry = true;                                
+                    break;
+                case PowerGraphState::WAIT_4_NEW_PERIOD:
+                    if ((mPgStartTime != mDisplayData->pGraphStartTime) || (mPgEndTime != mDisplayData->pGraphEndTime)) { // wait until new time period was received ...
+                        storeStartEndTimes = true;                                                                             // and store it for next period
+                        mPgState = PowerGraphState::WAIT_4_RESTART;
+                    }
+                    break;
+                case PowerGraphState::WAIT_4_RESTART:
+                    if ((mDisplayData->utcTs >= mPgStartTime) && (mDisplayData->utcTs < mPgEndTime)) { // wait until current time is in period again ...
+                        resetPowerGraph();                                                             // then reset power graph data
+                        store_entry = true;
+                        mPgState = PowerGraphState::IN_PERIOD;
+                    }
+                    break;
+            }
+
+            // store start and end times of current time period and calculate period length
+            if (storeStartEndTimes) {
+                mPgStartTime = mDisplayData->pGraphStartTime;
+                mPgEndTime = mDisplayData->pGraphEndTime;
+                mPgPeriod = mDisplayData->pGraphEndTime - mDisplayData->pGraphStartTime;  // time period of power graph in sec for scaling of x-axis
+            }
+
+            if (store_entry) {
+                mPgLastPos = std::min((uint8_t) sss2PgPos(mDisplayData->utcTs - mPgStartTime), (uint8_t) (mPgWidth - 1));  // current datapoint based on seconds since start
+                mPgData[mPgLastPos] = std::max(mPgData[mPgLastPos], val); // update current datapoint to maximum of all seen values
+                mPgMaxPwr = std::max(mPgMaxPwr, val);  // update max value of stored data for scaling of y-axis
+            }
+        }
+
+        // plot power graph to given display offset
+        void plotPowerGraph(uint8_t xoff, uint8_t yoff) {
+            if (nullptr == mPgData)  // power graph not initialized
+                return;
+
+            // draw axes
+            mDisplay->drawLine(xoff, yoff, xoff,            yoff - mPgHeight);  // vertical axis
+            mDisplay->drawLine(xoff, yoff, xoff + mPgWidth, yoff);              // horizontal axis
+
+            // do not draw as long as time is not set correctly and no data was received
+            if ((0 == mDisplayData->pGraphStartTime) || (0 == mDisplayData->pGraphEndTime) || (0 == mDisplayData->utcTs) || (mPgMaxPwr < 1) || (0 == mPgLastPos))
+                return;
+
+            // draw X scale
+            tmElements_t tm;
+            breakTime(mDisplayData->pGraphEndTime, tm);
+            uint8_t endHourPg = tm.Hour;
+            breakTime(mDisplayData->utcTs, tm);
+            uint8_t endHour = std::min(endHourPg, tm.Hour);
+            breakTime(mDisplayData->pGraphStartTime, tm);
+            tm.Hour += 1;
+            tm.Minute = 0;
+            tm.Second = 0;
+            for (; tm.Hour <= endHour; tm.Hour++) {
+                uint8_t x_pos_screen = getPowerGraphXpos(sss2PgPos((uint32_t) makeTime(tm) - mDisplayData->pGraphStartTime)); // scale horizontal axis
+                mDisplay->drawPixel(xoff + x_pos_screen, yoff - 1);
+            }
+
+            // draw Y scale
+            uint16_t scale_y = 10;
+            uint32_t maxpwr_int = static_cast<uint8_t>(std::round(mPgMaxPwr));
+            if (maxpwr_int > 100)
+                scale_y = 100;
+
+            for (uint32_t i = scale_y; i <= maxpwr_int; i += scale_y) {
+                uint8_t ypos = yoff - static_cast<uint8_t>(std::round(i * (float) mPgHeight / mPgMaxPwr)); // scale vertical axis
+                mDisplay->drawPixel(xoff + 1, ypos);
+            }
+
+            // draw curve
+            for (uint8_t i = 1; i <= mPgLastPos; i++) {
+                mDisplay->drawLine(xoff + getPowerGraphXpos(i - 1), yoff - getPowerGraphValueYpos(i - 1),
+                                   xoff + getPowerGraphXpos(i),     yoff - getPowerGraphValueYpos(i));
+            }
+
+            // print max power value
+            mDisplay->setFont(u8g2_font_4x6_tr);
+            snprintf(mFmtText, DISP_FMT_TEXT_LEN, "%dW", static_cast<uint16_t>(std::round(mPgMaxPwr)));
+            mDisplay->drawStr(xoff + 3, yoff - mPgHeight + 5, mFmtText);
+        }
+
+    private:
         bool monoMaintainDispSwitchState(void) {
           bool change = false;
             switch(mDispSwitchState) {
                 case DispSwitchState::TEXT:
                     if (mDispSwitchTime.isTimeout()) {
                         mDispSwitchState = DispSwitchState::GRAPH;
-                        mDispSwitchTime.startTimeMonitor(150 * mGraphRatio);  // mGraphRatio: 0-100 Gesamtperiode 15000 ms
+                        mDispSwitchTime.startTimeMonitor(150 * mCfg->graph_ratio);  // graph_ratio: 0-100 Gesamtperiode 15000 ms
                         change = true;
                     }
                     break;
                 case DispSwitchState::GRAPH:
                     if (mDispSwitchTime.isTimeout()) {
                         mDispSwitchState = DispSwitchState::TEXT;
-                        mDispSwitchTime.startTimeMonitor(150 * (100 - mGraphRatio));
+                        mDispSwitchTime.startTimeMonitor(150 * (100 - mCfg->graph_ratio));
                         change = true;
                     }
                     break;
@@ -143,120 +238,72 @@ class DisplayMono {
             return change;
         }
 
-        void initPowerGraph(uint8_t width, uint8_t height) {
-            mPgWidth = width;
-            mPgHeight = height;
-            mPgData = new float[mPgWidth];
-            //memset(mPgData, 0, mPgWidth);
-            resetPowerGraph();
-/*
-            Inverter<> *iv;
-            mPgMaxAvailPower = 0;
-            uint8_t nInv = mSys->getNumInverters();
-            for (uint8_t i = 0; i < nInv; i++) {
-                iv = mSys->getInverterByPos(i);
-                if (iv == NULL)
-                    continue;
-                for (uint8_t ch = 0; ch < 6; ch++) {
-                    mPgMaxAvailPower += iv->config->chMaxPwr[ch];
+        // reset power graph 
+        void resetPowerGraph() {
+            if (mPgData != nullptr) {
+                mPgMaxPwr = 0.0;
+                mPgLastPos = 0;
+                for (uint8_t i = 0; i < mPgWidth; i++) {
+                    mPgData[i] = 0.0;
                 }
             }
-            DBGPRINTLN("max. Power = " + String(mPgMaxAvailPower));*/
         }
 
-        void resetPowerGraph() {
-          if (mPgData != nullptr) {
-              mPgMaxPwr = 0.0;
-              mPgLastPos = 0;
-              for (uint8_t i = 0; i < mPgWidth; i++)
-                  mPgData[i] = 0.0;
-          }
+        // get power graph datapoint index, scaled to current time period, by seconds since start
+        uint8_t sss2PgPos(uint seconds_since_start) { 
+            if(mPgPeriod)                       
+                return (seconds_since_start * (mPgWidth - 1) / mPgPeriod);
+            else
+                return 0;
         }
 
-        uint8_t sss2pgpos(uint seconds_since_start) {
-          return(seconds_since_start * (mPgWidth - 1) / (mDisplayData->pGraphEndTime - mDisplayData->pGraphStartTime));
-        }
-
-        void calcPowerGraphValues() {
-            mPgPeriod = mDisplayData->pGraphEndTime - mDisplayData->pGraphStartTime;  // length of power graph for scaling of x-axis
-            uint32_t oldTimeOfDay = mPgTimeOfDay;
-            mPgTimeOfDay = (mDisplayData->utcTs > mDisplayData->pGraphStartTime) ? mDisplayData->utcTs - mDisplayData->pGraphStartTime : 0; // current time of day with respect to current sunrise time
-            if (oldTimeOfDay > mPgTimeOfDay) // new day -> reset old data
-                resetPowerGraph();
-            mPgLastPos = std::min((uint8_t) (mPgTimeOfDay * (mPgWidth - 1) / mPgPeriod), (uint8_t) (mPgWidth - 1));  // current datapoint based on currenct time of day
-        }
-
-        void addPowerGraphEntry(float val) {
-            if (mDisplayData->utcTs > 0) {  // precondition: utc time available
-                calcPowerGraphValues();
-                //mPgData[mPgLastPos] = std::max(mPgData[mPgLastPos], (uint8_t) (val * 255.0 / mPgMaxAvailPower));  // normalizing of data to 0-255
-                mPgData[mPgLastPos] = std::max(mPgData[mPgLastPos], val);
-                mPgMaxPwr = std::max(mPgMaxPwr, val);  // max value of stored data for scaling of y-axis
-            }
-        }
-
-        uint8_t getPowerGraphXpos(uint8_t p) {  //
-          if ((p <= mPgLastPos) && (mPgLastPos > 0))
+        // get X-position of power graph, scaled to lastpos, by according data point index
+        uint8_t getPowerGraphXpos(uint8_t p) {     
+            if ((p <= mPgLastPos) && (mPgLastPos > 0))
                 return((p * (mPgWidth - 1)) / mPgLastPos);  // scaling of x-axis
-          else
-                return(0);
+            else
+                return 0;
         }
 
-        uint8_t getPowerGraphYpos(uint8_t p) {
-          if (p < mPgWidth)
-                //return(((uint32_t) mPgData[p] * (uint32_t) mPgMaxAvailPower) * (uint32_t) mPgHeight / mPgMaxPwr / 255); // scaling of normalized data (0-255) to graph height
+        // get Y-position of power graph, scaled to maximum value, by according datapoint index
+        uint8_t getPowerGraphValueYpos(uint8_t p) { 
+            if ((p < mPgWidth) && (mPgMaxPwr > 0))
                 return((mPgData[p] * (uint32_t) mPgHeight / mPgMaxPwr)); // scaling of data to graph height
-          else
-                return(0);
+            else
+                return 0;
         }
 
-        void plotPowerGraph(uint8_t xoff, uint8_t yoff) {
-          // draw axes
-          mDisplay->drawLine(xoff, yoff, xoff,            yoff - mPgHeight);  // vertical axis
-          mDisplay->drawLine(xoff, yoff, xoff + mPgWidth, yoff);              // horizontal axis
+    protected:
+        display_t *mCfg;
+        U8G2 *mDisplay;
+        DisplayData *mDisplayData;
+        DispSwitchState mDispSwitchState = DispSwitchState::TEXT;
 
-          // draw X scale
-          tmElements_t tm;
-          breakTime(mDisplayData->pGraphEndTime, tm);
-          uint8_t endHourPg = tm.Hour;
-          breakTime(mDisplayData->utcTs, tm);
-          uint8_t endHour = std::min(endHourPg, tm.Hour);
-          breakTime(mDisplayData->pGraphStartTime, tm);
-          tm.Hour += 1;
-          tm.Minute = 0;
-          tm.Second = 0;
-          for (; tm.Hour <= endHour; tm.Hour++) {
-                uint8_t x_pos_screen = getPowerGraphXpos(sss2pgpos((uint32_t) makeTime(tm) - mDisplayData->pGraphStartTime)); // scale horizontal axis
-                mDisplay->drawPixel(xoff + x_pos_screen, yoff - 1);
-          }
+        uint16_t mDispWidth;
+        uint8_t mExtra;
+        int8_t  mPixelshift=0;
+        char mFmtText[DISP_FMT_TEXT_LEN];
+        uint8_t mLineXOffsets[5] = {};
+        uint8_t mLineYOffsets[5] = {};
 
-          // draw Y scale
-          uint16_t scale_y = 10;
-          uint32_t maxpwr_int = static_cast<uint8_t>(std::round(mPgMaxPwr));
-          if (maxpwr_int > 100)
-                scale_y = 100;
-          for (uint32_t i = scale_y; i <= maxpwr_int; i += scale_y) {
-                uint8_t ypos = yoff - static_cast<uint8_t>(std::round(i * (float) mPgHeight / mPgMaxPwr)); // scale vertical axis
-                mDisplay->drawPixel(xoff + 1, ypos);
-          }
+        uint8_t mPgWidth = 0;
 
-          // draw curve
-          for (uint8_t i = 1; i <= mPgLastPos; i++) {
-                mDisplay->drawLine(xoff + getPowerGraphXpos(i - 1), yoff - getPowerGraphYpos(i - 1),
-                                         xoff + getPowerGraphXpos(i),     yoff - getPowerGraphYpos(i));
-          }
+    private:
+        float  *mPgData = nullptr;
+        uint8_t mPgHeight = 0;
+        float   mPgMaxPwr = 0.0;
+        uint32_t mPgStartTime = 0;
+        uint32_t mPgEndTime = 0;
+        uint32_t mPgPeriod = 0;  // seconds
+        uint8_t  mPgLastPos = 0;
+        PowerGraphState mPgState = PowerGraphState::NO_TIME_SYNC;
 
-          // print max power value
-          mDisplay->setFont(u8g2_font_4x6_tr);
-          snprintf(mFmtText, DISP_FMT_TEXT_LEN, "%dW", static_cast<uint16_t>(std::round(mPgMaxPwr)));
-          mDisplay->drawStr(xoff + 3, yoff - mPgHeight + 5, mFmtText);
-        }
+        uint16_t mDispHeight;
+        uint8_t mLuminance;
 
-        // pixelshift screensaver with wipe effect
-        void calcPixelShift(int range) {
-            int8_t mod = (millis() / 10000) % ((range >> 1) << 2);
-            mPixelshift = mScreenSaver == 1 ? ((mod < range) ? mod - (range >> 1) : -(mod - range - (range >> 1) + 1)) : 0;
-        }
+        TimeMonitor mDisplayTime = TimeMonitor(1000 * DISP_DEFAULT_TIMEOUT, true);
+        TimeMonitor mDispSwitchTime = TimeMonitor();
+        bool mDisplayActive = true;  // always start with display on
 };
 
 /* adapted 5x8 Font for low-res displays with symbols

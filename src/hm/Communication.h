@@ -91,6 +91,7 @@ class Communication : public CommQueue<> {
                         mIsRetransmit = false;
                         if(NULL == q->iv->radio)
                             cmdDone(false); // can't communicate while radio is not defined!
+                        mFirstTry = q->iv->isAvailable();
                         q->iv->mCmd = q->cmd;
                         q->iv->mIsSingleframeReq = false;
                         mState = States::START;
@@ -142,6 +143,24 @@ class Communication : public CommQueue<> {
                                 if((IV_HMS == q->iv->ivGen) || (IV_HMT == q->iv->ivGen)) {
                                     q->iv->radio->switchFrequency(q->iv, HOY_BOOT_FREQ_KHZ, (q->iv->config->frequency*FREQ_STEP_KHZ + HOY_BASE_FREQ_KHZ));
                                     mWaitTime.startTimeMonitor(1000);
+                                } else {
+                                    if(IV_MI == q->iv->ivGen)
+                                        q->iv->mIvTxCnt++;
+                                    if(mFirstTry) {
+                                        mFirstTry     = false;
+                                        setAttempt();
+                                        mHeu.evalTxChQuality(q->iv, false, 0, 0);
+                                        //q->iv->radioStatistics.rxFailNoAnser++;
+                                        q->iv->radioStatistics.retransmits++;
+                                        mWaitTime.stopTimeMonitor();
+                                        mState = States::START;
+
+                                        /*if(*mSerialDebug) {
+                                            DPRINT_IVID(DBG_INFO, q->iv->id);
+                                            DBGPRINTLN(F("second try"));
+                                        }*/
+                                       return;
+                                    }
                                 }
                             }
                             closeRequest(q, false);
@@ -153,9 +172,9 @@ class Communication : public CommQueue<> {
 
                         while(!q->iv->radio->mBufCtrl.empty()) {
                             packet_t *p = &q->iv->radio->mBufCtrl.front();
-                            printRxInfo(q, p);
 
                             if(validateIvSerial(&p->packet[1], q->iv)) {
+                                printRxInfo(q, p);
                                 q->iv->radioStatistics.frmCnt++;
                                 q->iv->mDtuRxCnt++;
 
@@ -179,11 +198,11 @@ class Communication : public CommQueue<> {
                             yield();
                         }
 
-                        if(0 == q->attempts) {
+                        /*if(0 == q->attempts) {
                             DPRINT_IVID(DBG_INFO, q->iv->id);
                             DBGPRINT(F("no attempts left"));
                             closeRequest(q, false);
-                        } else {
+                        } else {*/
                             if(q->iv->ivGen != IV_MI) {
                                 mState = States::CHECK_PACKAGE;
                             } else {
@@ -208,7 +227,7 @@ class Communication : public CommQueue<> {
                                         closeRequest(q, true);
                                 }
                             }
-                        }
+                        //}
 
                         }
                         break;
@@ -236,6 +255,12 @@ class Communication : public CommQueue<> {
                         }
 
                         if(framnr) {
+                            if(0 == q->attempts) {
+                                DPRINT_IVID(DBG_INFO, q->iv->id);
+                                DBGPRINT(F("no attempts left"));
+                                closeRequest(q, false);
+                                return;
+                            }
                             setAttempt();
 
                             if(*mSerialDebug) {
@@ -303,11 +328,11 @@ class Communication : public CommQueue<> {
             CP_U32_BigEndian(tmp, iv->radioId.u64 >> 8);
             for(uint8_t i = 0; i < 4; i++) {
                 if(tmp[i] != buf[i]) {
-                    DPRINT(DBG_WARN, F("Inverter serial does not match, got: 0x"));
+                    /*DPRINT(DBG_WARN, F("Inverter serial does not match, got: 0x"));
                     DHEX(buf[0]);DHEX(buf[1]);DHEX(buf[2]);DHEX(buf[3]);
                     DBGPRINT(F(", expected: 0x"));
                     DHEX(tmp[0]);DHEX(tmp[1]);DHEX(tmp[2]);DHEX(tmp[3]);
-                    DBGPRINTLN("");
+                    DBGPRINTLN("");*/
                     return false;
                 }
             }
@@ -517,15 +542,15 @@ class Communication : public CommQueue<> {
         }
 
         void sendRetransmit(const queue_s *q, uint8_t i) {
-            if(q->attempts) {
+            //if(q->attempts) {
                 q->iv->radio->sendCmdPacket(q->iv, TX_REQ_INFO, (SINGLE_FRAME + i), true);
                 q->iv->radioStatistics.retransmits++;
                 mWaitTime.startTimeMonitor(SINGLEFR_TIMEOUT); // timeout
                 mState = States::WAIT;
-            } else {
+            /*} else {
                 //add(q, true);
                 closeRequest(q, false);
-            }
+            }*/
         }
 
     private:
@@ -548,7 +573,6 @@ class Communication : public CommQueue<> {
             q->iv->mGotLastMsg  = false;
             q->iv->miMultiParts = 0;
             mIsRetransmit       = false;
-            mFirstTry           = false; // for correct reset
             mState              = States::RESET;
             DBGPRINTLN(F("-----"));
         }
@@ -605,6 +629,8 @@ class Communication : public CommQueue<> {
                 rec->ts = q->ts;
                 q->iv->setValue(1, rec, (uint32_t) ((p->packet[24] << 8) + p->packet[25])/1);
                 q->iv->miMultiParts +=4;
+                rec->mqttSentStatus = MqttSentStatus::NEW_DATA;
+
             } else if ( p->packet[9] == 0x01 || p->packet[9] == 0x10 ) {//second frame for MI, 3rd gen. answers in 0x10
                 DPRINT_IVID(DBG_INFO, q->iv->id);
                 if ( p->packet[9] == 0x01 ) {
@@ -621,6 +647,7 @@ class Communication : public CommQueue<> {
                     record_t<> *rec = q->iv->getRecordStruct(InverterDevInform_Simple);  // choose the record structure
                     rec->ts = q->ts;
                     q->iv->setValue(0, rec, (uint32_t) ((((p->packet[10] << 8) | p->packet[11]) << 8 | p->packet[12]) << 8 | p->packet[13])/1);
+                    rec->mqttSentStatus = MqttSentStatus::NEW_DATA;
 
                     if(*mSerialDebug) {
                         DPRINT(DBG_INFO,F("HW_FB_TLmValue "));
@@ -668,6 +695,7 @@ class Communication : public CommQueue<> {
         inline void miGPFDecode(packet_t *p, const queue_s *q) {
             record_t<> *rec = q->iv->getRecordStruct(InverterDevInform_Simple);  // choose the record structure
             rec->ts = q->ts;
+            rec->mqttSentStatus = MqttSentStatus::NEW_DATA;
 
             q->iv->setValue(2, rec, (uint32_t) (((p->packet[10] << 8) | p->packet[11]))); //FLD_GRID_PROFILE_CODE
             q->iv->setValue(3, rec, (uint32_t) (((p->packet[12] << 8) | p->packet[13]))); //FLD_GRID_PROFILE_VERSION
@@ -735,17 +763,16 @@ class Communication : public CommQueue<> {
                     miNextRequest((p->packet[0] - ALL_FRAMES + 1), q);
                 } else {
                     q->iv->miMultiParts = 7; // indicate we are ready
-                    //miComplete(q->iv);
                 }
             } else if((p->packet[0] == (MI_REQ_CH1 + ALL_FRAMES)) && (q->iv->type == INV_TYPE_2CH)) {
                 //addImportant(q->iv, MI_REQ_CH2);
                 miNextRequest(MI_REQ_CH2, q);
                 mHeu.evalTxChQuality(q->iv, true, (q->attemptsMax - 1 - q->attempts), q->iv->curFrmCnt);
-                //use also miMultiParts here for better statistics?
-                //mHeu.setGotFragment(q->iv);
-            } else {                                    // first data msg for 1ch, 2nd for 2ch
+                q->iv->mIvRxCnt++;           // statistics workaround...
+
+            } else {                      // first data msg for 1ch, 2nd for 2ch
                 q->iv->miMultiParts += 6; // indicate we are ready
-                //miComplete(q->iv);
+
             }
         }
 
@@ -759,13 +786,9 @@ class Communication : public CommQueue<> {
                 DBGHEXLN(cmd);
             }
 
-            if(q->iv->miMultiParts == 7) {
-                //mHeu.setGotAll(q->iv);
+            if(q->iv->miMultiParts == 7)
                 q->iv->radioStatistics.rxSuccess++;
-            } else
-                //mHeu.setGotFragment(q->iv);
-                /*iv->radioStatistics.rxFail++; // got no complete payload*/
-            //q->iv->radioStatistics.retransmits++;
+
             q->iv->radio->sendCmdPacket(q->iv, cmd, 0x00, true);
 
             mWaitTime.startTimeMonitor(MI_TIMEOUT);
@@ -855,6 +878,8 @@ class Communication : public CommQueue<> {
             if (!stsok) {
                 q->iv->setValue(q->iv->getPosByChFld(0, FLD_EVT, rec), rec, prntsts);
                 q->iv->lastAlarm[0] = alarm_t(prntsts, q->ts, 0);
+                rec->ts = q->ts;
+                rec->mqttSentStatus = MqttSentStatus::NEW_DATA;
             }
 
             if (q->iv->alarmMesIndex < rec->record[q->iv->getPosByChFld(0, FLD_EVT, rec)]) {
@@ -872,6 +897,26 @@ class Communication : public CommQueue<> {
                 DPRINT_IVID(DBG_INFO, iv->id);
                 DBGPRINTLN(F("got all data msgs"));
             }
+
+            if (iv->mGetLossInterval >= AHOY_GET_LOSS_INTERVAL) { // initially mIvRxCnt = mIvTxCnt = 0
+                iv->mGetLossInterval = 1;
+                iv->radioStatistics.ivSent  = iv->mIvRxCnt + iv->mDtuTxCnt; // iv->mIvRxCnt is the nr. of additional answer frames, default we expect one frame per request
+                iv->radioStatistics.ivLoss  = iv->radioStatistics.ivSent - iv->mDtuRxCnt; // this is what we didn't receive
+                iv->radioStatistics.dtuLoss = iv->mIvTxCnt; // this is somehow the requests w/o answers in that periode
+                iv->radioStatistics.dtuSent = iv->mDtuTxCnt;
+                if (mSerialDebug) {
+                    DPRINT_IVID(DBG_INFO, iv->id);
+                    DBGPRINTLN("DTU loss: " +
+                        String (iv->radioStatistics.ivLoss) + "/" +
+                        String (iv->radioStatistics.ivSent) + " frames for " +
+                        String (iv->radioStatistics.dtuSent) + " requests");
+                }
+                iv->mIvRxCnt  = 0;  // start new interval, iVRxCnt is abused to collect additional possible frames
+                iv->mIvTxCnt  = 0;  // start new interval, iVTxCnt is abused to collect nr. of unanswered requests
+                iv->mDtuRxCnt = 0;  // start new interval
+                iv->mDtuTxCnt = 0;  // start new interval
+            }
+
             record_t<> *rec = iv->getRecordStruct(RealTimeRunData_Debug);
             iv->setValue(iv->getPosByChFld(0, FLD_YD, rec), rec, calcYieldDayCh0(iv,0));
 
@@ -892,17 +937,12 @@ class Communication : public CommQueue<> {
             iv->setValue(iv->getPosByChFld(0, FLD_PAC, rec), rec, (float) ac_pow/10);
 
             iv->doCalculations();
+            rec->mqttSentStatus = MqttSentStatus::NEW_DATA;
             // update status state-machine,
             if (ac_pow)
                 iv->isProducing();
-            //closeRequest(iv, iv->miMultiParts > 5);
-
-            //mHeu.setGotAll(iv);
-            //cmdDone(false);
             if(NULL != mCbPayload)
                 (mCbPayload)(RealTimeRunData_Debug, iv);
-
-            //mState = States::RESET; // everything ok, next request
         }
 
     private:

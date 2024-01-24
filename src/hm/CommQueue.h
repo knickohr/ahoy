@@ -11,7 +11,7 @@
 #include "hmInverter.h"
 #include "../utils/dbg.h"
 
-#define DEFAULT_ATTEMPS                 10
+#define DEFAULT_ATTEMPS                 5
 #define MORE_ATTEMPS_ALARMDATA          15
 #define MORE_ATTEMPS_GRIDONPROFILEPARA  15
 

@@ -39,8 +39,9 @@
 #define PROT_MASK_SETUP     0x0008
 #define PROT_MASK_UPDATE    0x0010
 #define PROT_MASK_SYSTEM    0x0020
-#define PROT_MASK_API       0x0040
-#define PROT_MASK_MQTT      0x0080
+#define PROT_MASK_HISTORY   0x0040
+#define PROT_MASK_API       0x0080
+#define PROT_MASK_MQTT      0x0100
 
 #define DEF_PROT_INDEX      0x0001
 #define DEF_PROT_LIVE       0x0000
@@ -48,6 +49,7 @@
 #define DEF_PROT_SETUP      0x0008
 #define DEF_PROT_UPDATE     0x0010
 #define DEF_PROT_SYSTEM     0x0020
+#define DEF_PROT_HISTORY    0x0000
 #define DEF_PROT_API        0x0000
 #define DEF_PROT_MQTT       0x0000
 
@@ -182,6 +184,8 @@ typedef struct {
 
 typedef struct {
     display_t display;
+    char customLink[MAX_CUSTOM_LINK_LEN];
+    char customLinkText[MAX_CUSTOM_LINK_TEXT_LEN];
 } plugins_t;
 
 typedef struct {
@@ -375,7 +379,7 @@ class settings {
             // erase all settings and reset to default
             memset(&mCfg, 0, sizeof(settings_t));
             mCfg.sys.protectionMask = DEF_PROT_INDEX | DEF_PROT_LIVE | DEF_PROT_SERIAL | DEF_PROT_SETUP
-                                    | DEF_PROT_UPDATE | DEF_PROT_SYSTEM | DEF_PROT_API | DEF_PROT_MQTT;
+                                    | DEF_PROT_UPDATE | DEF_PROT_SYSTEM | DEF_PROT_API | DEF_PROT_MQTT | DEF_PROT_HISTORY;
             mCfg.sys.darkMode = false;
             mCfg.sys.schedReboot = false;
             // restore temp settings
@@ -463,7 +467,7 @@ class settings {
             mCfg.plugin.display.pwrSaveAtIvOffline = false;
             mCfg.plugin.display.contrast = 60;
             mCfg.plugin.display.screenSaver = 1;  // default: 1 .. pixelshift for OLED for downward compatibility
-            mCfg.plugin.display.graph_ratio = 50;
+            mCfg.plugin.display.graph_ratio = 0;
             mCfg.plugin.display.graph_size  = 2;
             mCfg.plugin.display.rot = 0;
             mCfg.plugin.display.disp_data  = DEF_PIN_OFF; // SDA
@@ -555,7 +559,7 @@ class settings {
 
                 if(mCfg.sys.protectionMask == 0)
                     mCfg.sys.protectionMask = DEF_PROT_INDEX | DEF_PROT_LIVE | DEF_PROT_SERIAL | DEF_PROT_SETUP
-                                            | DEF_PROT_UPDATE | DEF_PROT_SYSTEM | DEF_PROT_API | DEF_PROT_MQTT;
+                                            | DEF_PROT_UPDATE | DEF_PROT_SYSTEM | DEF_PROT_API | DEF_PROT_MQTT | DEF_PROT_HISTORY;
             }
         }
 
@@ -714,6 +718,8 @@ class settings {
                 disp[F("busy")] = mCfg.plugin.display.disp_busy;
                 disp[F("dc")] = mCfg.plugin.display.disp_dc;
                 disp[F("pirPin")] = mCfg.plugin.display.pirPin;
+                obj[F("cst_lnk")] = mCfg.plugin.customLink;
+                obj[F("cst_lnk_txt")] = mCfg.plugin.customLinkText;
             } else {
                 JsonObject disp = obj["disp"];
                 getVal<uint8_t>(disp, F("type"), &mCfg.plugin.display.type);
@@ -732,6 +738,8 @@ class settings {
                 getVal<uint8_t>(disp, F("busy"), &mCfg.plugin.display.disp_busy);
                 getVal<uint8_t>(disp, F("dc"), &mCfg.plugin.display.disp_dc);
                 getVal<uint8_t>(disp, F("pirPin"), &mCfg.plugin.display.pirPin);
+                getChar(obj, F("cst_lnk"), mCfg.plugin.customLink, MAX_CUSTOM_LINK_LEN);
+                getChar(obj, F("cst_lnk_txt"), mCfg.plugin.customLinkText, MAX_CUSTOM_LINK_TEXT_LEN);
             }
         }
 

@@ -9,6 +9,10 @@
 
 #define WDT_TIMEOUT_SECONDS 8   // Watchdog Timeout 8s
 
+#if !defined(ESP32)
+    void esp_task_wdt_reset() {}
+#endif
+
 
 //-----------------------------------------------------------------------------
 app::app() : ah::Scheduler {} {}
@@ -26,6 +30,7 @@ void app::setup() {
     #endif
 
     resetSystem();
+    esp_task_wdt_reset();
 
     mSettings.setup();
     mSettings.getPtr(mConfig);
@@ -37,16 +42,14 @@ void app::setup() {
     else
         DBGPRINTLN(F("false"));
 
-    #if defined(ESP32)
-        esp_task_wdt_reset();
-    #endif
+    esp_task_wdt_reset();
 
     if(mConfig->nrf.enabled) {
         mNrfRadio.setup(&mConfig->serial.debug, &mConfig->serial.privacyLog, &mConfig->serial.printWholeTrace, mConfig->nrf.pinIrq, mConfig->nrf.pinCe, mConfig->nrf.pinCs, mConfig->nrf.pinSclk, mConfig->nrf.pinMosi, mConfig->nrf.pinMiso);
     }
     #if defined(ESP32)
     if(mConfig->cmt.enabled) {
-        mCmtRadio.setup(&mConfig->serial.debug, &mConfig->serial.privacyLog, &mConfig->serial.printWholeTrace, mConfig->cmt.pinSclk, mConfig->cmt.pinSdio, mConfig->cmt.pinCsb, mConfig->cmt.pinFcsb, false);
+        mCmtRadio.setup(&mConfig->serial.debug, &mConfig->serial.privacyLog, &mConfig->serial.printWholeTrace, mConfig->cmt.pinSclk, mConfig->cmt.pinSdio, mConfig->cmt.pinCsb, mConfig->cmt.pinFcsb);
     }
     #endif
     #ifdef ETHERNET
@@ -61,14 +64,14 @@ void app::setup() {
         #endif
     #endif /* defined(ETHERNET) */
 
-    #if defined(ESP32)
-        esp_task_wdt_reset();
-    #endif
+    esp_task_wdt_reset();
 
     mCommunication.setup(&mTimestamp, &mConfig->serial.debug, &mConfig->serial.privacyLog, &mConfig->serial.printWholeTrace, &mConfig->inst.gapMs);
     mCommunication.addPayloadListener(std::bind(&app::payloadEventListener, this, std::placeholders::_1, std::placeholders::_2));
+    #if defined(ENABLE_MQTT)
     mCommunication.addPowerLimitAckListener([this] (Inverter<> *iv) { mMqtt.setPowerLimitAck(iv); });
-    mSys.setup(&mTimestamp, &mConfig->inst);
+    #endif
+    mSys.setup(&mTimestamp, &mConfig->inst, this);
     for (uint8_t i = 0; i < MAX_NUM_INVERTERS; i++) {
         initInverter(i);
     }
@@ -78,12 +81,11 @@ void app::setup() {
             DPRINTLN(DBG_WARN, F("WARNING! your NRF24 module can't be reached, check the wiring"));
     }
 
-    #if defined(ESP32)
-        esp_task_wdt_reset();
-    #endif
+    esp_task_wdt_reset();
 
     // when WiFi is in client mode, then enable mqtt broker
     #if !defined(AP_ONLY)
+    #if defined(ENABLE_MQTT)
     mMqttEnabled = (mConfig->mqtt.broker[0] > 0);
     if (mMqttEnabled) {
         mMqtt.setup(&mConfig->mqtt, mConfig->sys.deviceName, mVersion, &mSys, &mTimestamp, &mUptime);
@@ -91,11 +93,10 @@ void app::setup() {
         mCommunication.addAlarmListener([this](Inverter<> *iv) { mMqtt.alarmEvent(iv); });
     }
     #endif
+    #endif
     setupLed();
 
-    #if defined(ESP32)
-        esp_task_wdt_reset();
-    #endif
+    esp_task_wdt_reset();
 
     mWeb.setup(this, &mSys, mConfig);
     mWeb.setProtection(strlen(mConfig->sys.adminPwd) != 0);
@@ -119,9 +120,11 @@ void app::setup() {
         #endif
     #endif
 
-    #if defined(ESP32)
-        esp_task_wdt_reset();
-    #endif
+    esp_task_wdt_reset();
+
+    #if defined(ENABLE_HISTORY)
+    mHistory.setup(this, &mSys, mConfig, &mTimestamp);
+    #endif /*ENABLE_HISTORY*/
 
     mPubSerial.setup(mConfig, &mSys, &mTimestamp);
 
@@ -133,14 +136,21 @@ void app::setup() {
     //mImprov.setup(this, mConfig->sys.deviceName, mVersion);
     #endif
 
+    #if defined(ENABLE_SIMULATOR)
+    mSimulator.setup(&mSys, &mTimestamp, 0);
+    mSimulator.addPayloadListener([this](uint8_t cmd, Inverter<> *iv) {
+        payloadEventListener(cmd, iv);
+    });
+    #endif /*ENABLE_SIMULATOR*/
+
+
+    esp_task_wdt_reset();
     regularTickers();
 }
 
 //-----------------------------------------------------------------------------
 void app::loop(void) {
-    #if defined(ESP32)
-        esp_task_wdt_reset();
-    #endif
+    esp_task_wdt_reset();
 
     if(mConfig->nrf.enabled)
         mNrfRadio.loop();
@@ -156,8 +166,11 @@ void app::loop(void) {
     ah::Scheduler::loop();
     mCommunication.loop();
 
+    #if defined(ENABLE_MQTT)
     if (mMqttEnabled && mNetworkConnected)
         mMqtt.loop();
+    #endif
+    yield();
 }
 
 //-----------------------------------------------------------------------------
@@ -192,6 +205,14 @@ void app::regularTickers(void) {
     #if !defined(ETHERNET)
     //everySec([this]() { mImprov.tickSerial(); }, "impro");
     #endif
+
+    #if defined(ENABLE_HISTORY)
+    everySec(std::bind(&HistoryType::tickerSecond, &mHistory), "hist");
+    #endif /*ENABLE_HISTORY*/
+
+    #if defined(ENABLE_SIMULATOR)
+    every(std::bind(&SimulatorType::tick, &mSimulator), 5, "sim");
+    #endif /*ENABLE_SIMULATOR*/
 }
 
 #if defined(ETHERNET)
@@ -207,11 +228,13 @@ void app::onNtpUpdate(bool gotTime) {
 
 //-----------------------------------------------------------------------------
 void app::updateNtp(void) {
+    #if defined(ENABLE_MQTT)
     if (mMqttReconnect && mMqttEnabled) {
         mMqtt.tickerSecond();
         everySec(std::bind(&PubMqttType::tickerSecond, &mMqtt), "mqttS");
         everyMin(std::bind(&PubMqttType::tickerMinute, &mMqtt), "mqttM");
     }
+    #endif /*ENABLE_MQTT*/
 
     // only install schedulers once even if NTP wasn't successful in first loop
     if (mMqttReconnect) {  // @TODO: mMqttReconnect is variable which scope has changed
@@ -280,7 +303,7 @@ void app::tickCalcSunrise(void) {
     if (mMqttEnabled) {
         tickSun();
         nxtTrig = mSunrise + mConfig->sun.offsetSecMorning + 1;         // one second safety to trigger correctly
-        onceAt(std::bind(&app::tickSun, this), nxtTrig, "mqSr"); // trigger on sunrise to update 'dis_night_comm'
+        onceAt(std::bind(&app::tickSunrise, this), nxtTrig, "mqSr");    // trigger on sunrise to update 'dis_night_comm'
     }
 }
 
@@ -326,8 +349,19 @@ void app::tickIVCommunication(void) {
 //-----------------------------------------------------------------------------
 void app::tickSun(void) {
     // only used and enabled by MQTT (see setup())
+    #if defined(ENABLE_MQTT)
     if (!mMqtt.tickerSun(mSunrise, mSunset, mConfig->sun.offsetSecMorning, mConfig->sun.offsetSecEvening))
         once(std::bind(&app::tickSun, this), 1, "mqSun");  // MQTT not connected, retry
+    #endif
+}
+
+//-----------------------------------------------------------------------------
+void app::tickSunrise(void) {
+    // only used and enabled by MQTT (see setup())
+    #if defined(ENABLE_MQTT)
+    if (!mMqtt.tickerSun(mSunrise, mSunset, mConfig->sun.offsetSecMorning, mConfig->sun.offsetSecEvening, true))
+        once(std::bind(&app::tickSun, this), 1, "mqSun");  // MQTT not connected, retry
+    #endif
 }
 
 //-----------------------------------------------------------------------------
@@ -372,8 +406,10 @@ void app::tickMidnight(void) {
     if (mConfig->inst.rstYieldMidNight) {
         zeroIvValues(!CHECK_AVAIL, !SKIP_YIELD_DAY);
 
+        #if defined(ENABLE_MQTT)
         if (mMqttEnabled)
             mMqtt.tickerMidnight();
+        #endif
     }
 }
 
@@ -462,16 +498,49 @@ void app:: zeroIvValues(bool checkAvail, bool skipYieldDay) {
         changed = true;
     }
 
-    if(changed) {
-        if(mMqttEnabled && !skipYieldDay)
-            mMqtt.setZeroValuesEnable();
+    if(changed)
         payloadEventListener(RealTimeRunData_Debug, NULL);
-    }
 }
 
 //-----------------------------------------------------------------------------
 void app::resetSystem(void) {
-    snprintf(mVersion, 12, "%d.%d.%d", VERSION_MAJOR, VERSION_MINOR, VERSION_PATCH);
+    snprintf(mVersion, sizeof(mVersion), "%d.%d.%d", VERSION_MAJOR, VERSION_MINOR, VERSION_PATCH);
+    snprintf(mVersionModules, sizeof(mVersionModules), "%s",
+    #ifdef ENABLE_PROMETHEUS_EP
+        "P"
+    #endif
+
+    #ifdef ENABLE_MQTT
+        "M"
+    #endif
+
+    #ifdef PLUGIN_DISPLAY
+        "D"
+    #endif
+
+    #ifdef ENABLE_HISTORY
+        "H"
+    #endif
+
+    #ifdef AP_ONLY
+        "A"
+    #endif
+
+    #ifdef ENABLE_SYSLOG
+        "Y"
+    #endif
+
+    #ifdef ENABLE_SIMULATOR
+        "S"
+    #endif
+
+        "-"
+    #ifdef LANG_DE
+        "de"
+    #else
+        "en"
+    #endif
+    );
 
 #ifdef AP_ONLY
     mTimestamp = 1;
