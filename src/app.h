@@ -15,6 +15,7 @@
 
 #include "config/settings.h"
 #include "defines.h"
+#include "utils/LogQueue.h"
 #include "appInterface.h"
 #include "hm/hmSystem.h"
 #include "hm/hmRadio.h"
@@ -394,6 +395,7 @@ class app : public IApp, public ah::Scheduler {
         HmSystemType mSys;
         HmRadio<> mNrfRadio;
         Communication mCommunication;
+        LogQueue mLogQueue;
 
         bool mShowRebootRequest = false;
 

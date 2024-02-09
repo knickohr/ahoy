@@ -15,12 +15,13 @@ template<uint32_t DTU_SN = 0x81001765>
 class CmtRadio : public Radio {
     typedef Cmt2300a CmtType;
     public:
-        void setup(bool *serialDebug, bool *privacyMode, bool *printWholeTrace, uint8_t pinSclk, uint8_t pinSdio, uint8_t pinCsb, uint8_t pinFcsb, uint8_t region = 0, bool genDtuSn = true) {
+        void setup(bool *serialDebug, bool *privacyMode, bool *printWholeTrace, LogQueue *logQueue, uint8_t pinSclk, uint8_t pinSdio, uint8_t pinCsb, uint8_t pinFcsb, uint8_t region = 0, bool genDtuSn = true) {
             mCmt.setup(pinSclk, pinSdio, pinCsb, pinFcsb);
             reset(genDtuSn, static_cast<RegionCfg>(region));
             mPrivacyMode = privacyMode;
             mSerialDebug = serialDebug;
             mPrintWholeTrace = printWholeTrace;
+            mLogQueue = logQueue;
             mTxBuf.fill(0);
         }
 
@@ -187,6 +188,7 @@ class CmtRadio : public Radio {
             }
         }
 
+        LogQueue *mLogQueue;
         CmtType mCmt;
         bool mCmtAvail = false;
         bool mRqstGetRx = false;

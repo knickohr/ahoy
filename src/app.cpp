@@ -45,12 +45,14 @@ void app::setup() {
 
     esp_task_wdt_reset();
 
+    mLogQueue.setup();
+
     if(mConfig->nrf.enabled) {
-        mNrfRadio.setup(&mConfig->serial.debug, &mConfig->serial.privacyLog, &mConfig->serial.printWholeTrace, mConfig->nrf.pinIrq, mConfig->nrf.pinCe, mConfig->nrf.pinCs, mConfig->nrf.pinSclk, mConfig->nrf.pinMosi, mConfig->nrf.pinMiso);
+        mNrfRadio.setup(&mConfig->serial.debug, &mConfig->serial.privacyLog, &mConfig->serial.printWholeTrace, &mLogQueue, mConfig->nrf.pinIrq, mConfig->nrf.pinCe, mConfig->nrf.pinCs, mConfig->nrf.pinSclk, mConfig->nrf.pinMosi, mConfig->nrf.pinMiso);
     }
     #if defined(ESP32)
     if(mConfig->cmt.enabled) {
-        mCmtRadio.setup(&mConfig->serial.debug, &mConfig->serial.privacyLog, &mConfig->serial.printWholeTrace, mConfig->cmt.pinSclk, mConfig->cmt.pinSdio, mConfig->cmt.pinCsb, mConfig->cmt.pinFcsb, mConfig->sys.region);
+        mCmtRadio.setup(&mConfig->serial.debug, &mConfig->serial.privacyLog, &mConfig->serial.printWholeTrace, &mLogQueue, mConfig->cmt.pinSclk, mConfig->cmt.pinSdio, mConfig->cmt.pinCsb, mConfig->cmt.pinFcsb, mConfig->sys.region);
     }
     #endif
     #ifdef ETHERNET
@@ -67,7 +69,7 @@ void app::setup() {
 
     esp_task_wdt_reset();
 
-    mCommunication.setup(&mTimestamp, &mConfig->serial.debug, &mConfig->serial.privacyLog, &mConfig->serial.printWholeTrace);
+    mCommunication.setup(&mTimestamp, &mConfig->serial.debug, &mConfig->serial.privacyLog, &mConfig->serial.printWholeTrace, &mLogQueue);
     mCommunication.addPayloadListener(std::bind(&app::payloadEventListener, this, std::placeholders::_1, std::placeholders::_2));
     #if defined(ENABLE_MQTT)
     mCommunication.addPowerLimitAckListener([this] (Inverter<> *iv) { mMqtt.setPowerLimitAck(iv); });
@@ -143,6 +145,8 @@ void app::setup() {
 //-----------------------------------------------------------------------------
 void app::loop(void) {
     esp_task_wdt_reset();
+
+    mLogQueue.loop();
 
     if(mConfig->nrf.enabled)
         mNrfRadio.loop();

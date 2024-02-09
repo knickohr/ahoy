@@ -13,6 +13,7 @@
 #if defined(CONFIG_IDF_TARGET_ESP32S3) && defined(SPI_HAL)
 #include "nrfHal.h"
 #endif
+#include "utils/LogQueue.h"
 
 #define SPI_SPEED           1000000
 #define RF_CHANNELS         5
@@ -42,7 +43,7 @@ class HmRadio : public Radio {
         }
         ~HmRadio() {}
 
-        void setup(bool *serialDebug, bool *privacyMode, bool *printWholeTrace, uint8_t irq = IRQ_PIN, uint8_t ce = CE_PIN, uint8_t cs = CS_PIN, uint8_t sclk = SCLK_PIN, uint8_t mosi = MOSI_PIN, uint8_t miso = MISO_PIN) {
+        void setup(bool *serialDebug, bool *privacyMode, bool *printWholeTrace, LogQueue *logQueue, uint8_t irq = IRQ_PIN, uint8_t ce = CE_PIN, uint8_t cs = CS_PIN, uint8_t sclk = SCLK_PIN, uint8_t mosi = MOSI_PIN, uint8_t miso = MISO_PIN) {
             DPRINTLN(DBG_VERBOSE, F("hmRadio.h:setup"));
 
             pinMode(irq, INPUT_PULLUP);
@@ -50,6 +51,7 @@ class HmRadio : public Radio {
             mSerialDebug     = serialDebug;
             mPrivacyMode     = privacyMode;
             mPrintWholeTrace = printWholeTrace;
+            mLogQueue        = logQueue;
 
             generateDtuSn();
             mDtuRadioId = ((uint64_t)(((mDtuSn >> 24) & 0xFF) | ((mDtuSn >> 8) & 0xFF00) | ((mDtuSn << 8) & 0xFF0000) | ((mDtuSn << 24) & 0xFF000000)) << 8) | 0x01;
@@ -137,6 +139,32 @@ class HmRadio : public Radio {
                 // here we got news from the nRF
                 mIrqRcvd     = false;
                 mNrf24->whatHappened(tx_ok, tx_fail, rx_ready); // resets the IRQ pin to HIGH
+// 0.8.760002+4
+// ACK() / NACK()
+                if (tx_ok) {
+                    // ACK vom WR
+                    mLogQueue->add_IRQ_ACK(String(mNrf24->getARC()));
+//                    DPRINT_IVID(DBG_INFO, mLastIv->id);
+//                    DBGPRINT(F("ia("));
+//                    DBGPRINT(String(mNrf24->getARC()));
+//                    DBGPRINT(") ");
+                }
+                if (tx_fail) {
+                    // kein ACK vom WR
+                    mLogQueue->add_IRQ_NACK(String(mNrf24->getARC()));
+//                    DPRINT_IVID(DBG_INFO, mLastIv->id);
+//                    DBGPRINT(F("in("));
+//                    DBGPRINT(String(mNrf24->getARC()));
+//                    DBGPRINT(") ");
+                }
+                if (rx_ready) {
+                    // Daten vom WR empfangen
+                    mLogQueue->add_IRQ_Data("");
+//                    DPRINT_IVID(DBG_INFO, mLastIv->id);
+//                    DBGPRINT(F("id"));
+//                    DBGPRINT(F(" "));
+                }
+// Ende 0.8.760002
                 mLastIrqTime = millis();
 
                 if(tx_ok || tx_fail) { // tx related interrupt, basically we should start listening
@@ -370,6 +398,7 @@ class HmRadio : public Radio {
             mTxChIdx = iv->heuristics.txRfChId;
 
             if(*mSerialDebug) {
+// 0.8.7600xx
                 /*if(!isRetransmit) {
                     DPRINT(DBG_INFO, "last tx setup: ");
                     DBGPRINT(String(mTxSetupTime));
@@ -377,34 +406,58 @@ class HmRadio : public Radio {
                 }*/
 
                 DPRINT_IVID(DBG_INFO, iv->id);
-                DBGPRINT(F("TX "));
-                DBGPRINT(String(len));
-                DBGPRINT(" CH");
-                if(mTxChIdx == 0)
-                    DBGPRINT("0");
-                DBGPRINT(String(mRfChLst[mTxChIdx]));
-                DBGPRINT(F(", "));
-                DBGPRINT(String(mTxRetriesNext));
-                //DBGPRINT(F(" retries | "));
-                //#ifdef DYNAMIC_OFFSET
-                DBGPRINT(F(" ret., rx offset: "));
-                DBGPRINT(String(iv->rxOffset));
-                DBGPRINT(F(" | "));
-                /*#else
-                DBGPRINT(F(" ret. | "));
-                #endif*/
-                if(*mPrintWholeTrace) {
-                    if(*mPrivacyMode)
-                        ah::dumpBuf(mTxBuf.data(), len, 1, 4);
-                    else
-                        ah::dumpBuf(mTxBuf.data(), len);
+                // Senden
+                // sTX oder rTX beim Senden
+                if (!isRetransmit) {
+                    mLogQueue->add_sTX(String("CH" + mRfChLst[mTxChIdx]), String(mTxRetriesNext), String("-1,-1"), String(len), String(""));
+//                    DBGPRINT(F("s"));
                 } else {
+                    mLogQueue->add_rTX(String("CH" + mRfChLst[mTxChIdx]), String(mTxRetriesNext), String("-1,-1"), String(len), String(""));
+//                    DBGPRINT(F("r"));
+                }
+//                DBGPRINT(F("TX("));
+//                DBGPRINT("CH");
+//                if(mTxChIdx == 0)
+//                    DBGPRINT("0");
+//                DBGPRINT(String(mRfChLst[mTxChIdx]));
+//                DBGPRINT(F(") "));
+                // Retries
+//                DBGPRINT(F("Re("));
+//                DBGPRINT(String(mTxRetriesNext));
+//                DBGPRINT(F(") "));
+                // Retransmits
+//                DBGPRINT(F("RT("));
+//                DBGPRINT(String(-1));
+//                DBGPRINT(F(","));
+//                DBGPRINT(String(-1));
+//                DBGPRINT(F(") "));
+                // Payload
+//                DBGPRINT(F("P("));
+//                DBGPRINT(String(len));
+//                DBGPRINT(F(") "));
+                // Data
+/*
+                String data = "";
+                DBGPRINT(F("D("));
+                if (*mPrintWholeTrace) {
+                    if (*mPrivacyMode) {
+                        data = "";
+                        ah::dumpBuf(mTxBuf.data(), len, 1, 4);
+                    } else {
+                        data = "";
+                        ah::dumpBuf(mTxBuf.data(), len);
+                    }
+                } else {
+                    data = "";
                     DHEX(mTxBuf[0]);
                     DBGPRINT(F(" "));
                     DHEX(mTxBuf[10]);
                     DBGPRINT(F(" "));
-                    DBGHEXLN(mTxBuf[9]);
+                    DHEX(mTxBuf[9]);
                 }
+                DBGPRINT(F(") "));
+*/
+// Ende - 0.8.7600xx
             }
 
             mNrf24->stopListening();
@@ -439,6 +492,7 @@ class HmRadio : public Radio {
             return true;
         }
 
+        LogQueue *mLogQueue;
         uint64_t mDtuRadioId = 0ULL;
         const uint8_t mRfChLst[RF_CHANNELS] = {03, 23, 40, 61, 75}; // channel List:2403, 2423, 2440, 2461, 2475MHz
         uint8_t mTxChIdx = 0;

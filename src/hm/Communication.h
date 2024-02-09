@@ -12,6 +12,7 @@
 #include "../utils/crc.h"
 #include "../utils/timemonitor.h"
 #include "Heuristic.h"
+#include "utils/LogQueue.h"
 
 #define MAX_BUFFER          250
 
@@ -21,11 +22,12 @@ typedef std::function<void(Inverter<> *)> alarmListenerType;
 
 class Communication : public CommQueue<> {
     public:
-        void setup(uint32_t *timestamp, bool *serialDebug, bool *privacyMode, bool *printWholeTrace) {
+        void setup(uint32_t *timestamp, bool *serialDebug, bool *privacyMode, bool *printWholeTrace, LogQueue *logQueue) {
             mTimestamp = timestamp;
             mPrivacyMode = privacyMode;
             mSerialDebug = serialDebug;
             mPrintWholeTrace = printWholeTrace;
+            mLogQueue = logQueue;
         }
 
         void addImportant(Inverter<> *iv, uint8_t cmd) {
@@ -76,9 +78,9 @@ class Communication : public CommQueue<> {
                     for(uint8_t i = 0; i < MAX_PAYLOAD_ENTRIES; i++) {
                         mLocalBuf[i].len = 0;
                     }
-
-                    if(*mSerialDebug)
-                        mHeu.printStatus(q->iv);
+// TODO
+//                    if(*mSerialDebug)
+//                        mHeu.printStatus(q->iv);
                     mHeu.getTxCh(q->iv);
                     q->iv->mGotFragment = false;
                     q->iv->mGotLastMsg  = false;
@@ -132,10 +134,11 @@ class Communication : public CommQueue<> {
                 case States::CHECK_FRAMES: {
                     if((q->iv->radio->mBufCtrl.empty() && !mIsRetransmit) ) { // || (0 == q->attempts)) { // radio buffer empty. No more answers will be checked later
                         if(*mSerialDebug) {
-                            DPRINT_IVID(DBG_INFO, q->iv->id);
-                            DBGPRINT(F("request timeout: "));
-                            DBGPRINT(String(q->iv->radio->mRadioWaitTime.getRunTime()));
-                            DBGPRINTLN(F("ms"));
+mLogQueue->add_Timeout(String(q->iv->radio->mRadioWaitTime.getRunTime()));
+//                            DPRINT_IVID(DBG_INFO, q->iv->id);
+//                            DBGPRINT(F("request timeout: "));
+//                            DBGPRINT(String(q->iv->radio->mRadioWaitTime.getRunTime()));
+//                            DBGPRINTLN(F("ms"));
                         }
 
                         if(!q->iv->mGotFragment) {
@@ -265,6 +268,7 @@ class Communication : public CommQueue<> {
                             }
                             if(missedFrames > 3 || (q->cmd == RealTimeRunData_Debug && missedFrames > 1) || ((missedFrames > 1) && ((missedFrames + 2) > q->attempts))) {
                                 if(*mSerialDebug) {
+//mLogQueue->add_Frame();
                                     DPRINT_IVID(DBG_INFO, q->iv->id);
                                     DBGPRINT(String(missedFrames));
                                     DBGPRINT(F(" frames missing "));
@@ -282,6 +286,7 @@ class Communication : public CommQueue<> {
                         setAttempt();
 
                         if(*mSerialDebug) {
+//mLogQueue->add_Frame();
                             DPRINT_IVID(DBG_WARN, q->iv->id);
                             DBGPRINT(F("frame "));
                             DBGPRINT(String(framnr));
@@ -309,6 +314,8 @@ class Communication : public CommQueue<> {
         }
 
         inline void printRxInfo(const queue_s *q, packet_t *p) {
+//
+DBGPRINTLN(F(""));
             DPRINT_IVID(DBG_INFO, q->iv->id);
             DBGPRINT(F("RX "));
             if(p->millis < 100)
@@ -1020,6 +1027,7 @@ class Communication : public CommQueue<> {
         States mState = States::RESET;
         uint32_t *mTimestamp = nullptr;
         bool *mPrivacyMode = nullptr, *mSerialDebug = nullptr, *mPrintWholeTrace = nullptr;
+        LogQueue *mLogQueue;
         TimeMonitor mWaitTime = TimeMonitor(0, true);  // start as expired (due to code in RESET state)
         std::array<frame_t, MAX_PAYLOAD_ENTRIES> mLocalBuf;
         bool mFirstTry = false;      // see, if we should do a second try
