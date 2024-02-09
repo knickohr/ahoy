@@ -468,7 +468,7 @@ class HmRadio : public Radio {
             }
             mNrf24->setChannel(mRfChLst[mTxChIdx]);
             mNrf24->openWritingPipe(reinterpret_cast<uint8_t*>(&iv->radioId.u64));
-            mNrf24->startFastWrite(mTxBuf.data(), len, false); // false = request ACK response
+            mNrf24->startFastWrite(mTxBuf.data(), len, false, true); // false (3) = request ACK response; true (4) reset CE to high after transmission
             mMillis = millis();
 
             mLastIv = iv;

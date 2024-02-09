@@ -16,16 +16,38 @@ class LogQueue {
 
     void add_sTX(String tx, String retries, String reTransmit, String payload, String data) {
         DBGPRINTLN(F(""));
-        DBGPRINT(String("sTX(" + tx + ") Re(" + retries + ") RT(" + reTransmit + ") P(" + payload + ") D(" + data + ") "));
+        DBGPRINT(F("sTX("));
+        DBGPRINT(String(tx));
+        DBGPRINT(F(") Re("));
+        DBGPRINT(String(retries));
+        DBGPRINT(F(") RT("));
+        DBGPRINT(String(reTransmit));
+        DBGPRINT(F(") P("));
+        DBGPRINT(String(payload));
+        DBGPRINT(F(") D("));
+        DBGPRINT(String(data));
+        DBGPRINT(F(") "));
     };
 
     void add_rTX(String tx, String retries, String reTransmit, String payload, String data) {
         DBGPRINTLN(F(""));
-        DBGPRINT(String("rTX(" + tx + ") Re(" + retries + ") RT(" + reTransmit + ") P(" + payload + ") D(" + data + ") "));
+        DBGPRINT(F("rTX("));
+        DBGPRINT(String(tx));
+        DBGPRINT(F(") Re("));
+        DBGPRINT(String(retries));
+        DBGPRINT(F(") RT("));
+        DBGPRINT(String(reTransmit));
+        DBGPRINT(F(") P("));
+        DBGPRINT(String(payload));
+        DBGPRINT(F(") D("));
+        DBGPRINT(String(data));
+        DBGPRINT(F(") "));
     };
 
     void add_Timeout(String text){
-        DBGPRINT(String("TO(" + text + "ms) "));
+        DBGPRINT(F("TO("));
+        DBGPRINT(String(text));
+        DBGPRINT(F("ms) "));
     };
 
     void add_Frame(){
@@ -33,15 +55,21 @@ class LogQueue {
     };
 
     void add_IRQ_ACK(String text) {
-        DBGPRINT(String("ia(" + text + ") "));
+        DBGPRINT(F("ia("));
+        DBGPRINT(String(text));
+        DBGPRINT(F(") "));
     };
 
     void add_IRQ_NACK(String text) {
-        DBGPRINT(String("in(" + text + ") "));
+        DBGPRINT(F("in("));
+        DBGPRINT(String(text));
+        DBGPRINT(F(") "));
     };
 
     void add_IRQ_Data(String text) {
-        DBGPRINT(String("id(" + text + ") "));
+        DBGPRINT(F("id("));
+        DBGPRINT(String(text));
+        DBGPRINT(F(") "));
     };
 
     void print(){};
