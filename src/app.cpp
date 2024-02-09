@@ -45,7 +45,7 @@ void app::setup() {
 
     esp_task_wdt_reset();
 
-    mLogQueue.setup();
+    mLogQueue.setup(&mTimestamp, &mTsMillis);
 
     if(mConfig->nrf.enabled) {
         mNrfRadio.setup(&mConfig->serial.debug, &mConfig->serial.privacyLog, &mConfig->serial.printWholeTrace, &mLogQueue, mConfig->nrf.pinIrq, mConfig->nrf.pinCe, mConfig->nrf.pinCs, mConfig->nrf.pinSclk, mConfig->nrf.pinMosi, mConfig->nrf.pinMiso);

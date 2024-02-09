@@ -134,7 +134,7 @@ class Communication : public CommQueue<> {
                 case States::CHECK_FRAMES: {
                     if((q->iv->radio->mBufCtrl.empty() && !mIsRetransmit) ) { // || (0 == q->attempts)) { // radio buffer empty. No more answers will be checked later
                         if(*mSerialDebug) {
-mLogQueue->add_Timeout(String(q->iv->radio->mRadioWaitTime.getRunTime()));
+mLogQueue->add_Timeout(String(q->iv->id), String(q->iv->radio->mRadioWaitTime.getRunTime()));
 //                            DPRINT_IVID(DBG_INFO, q->iv->id);
 //                            DBGPRINT(F("request timeout: "));
 //                            DBGPRINT(String(q->iv->radio->mRadioWaitTime.getRunTime()));
@@ -268,11 +268,12 @@ mLogQueue->add_Timeout(String(q->iv->radio->mRadioWaitTime.getRunTime()));
                             }
                             if(missedFrames > 3 || (q->cmd == RealTimeRunData_Debug && missedFrames > 1) || ((missedFrames > 1) && ((missedFrames + 2) > q->attempts))) {
                                 if(*mSerialDebug) {
-//mLogQueue->add_Frame();
-                                    DPRINT_IVID(DBG_INFO, q->iv->id);
-                                    DBGPRINT(String(missedFrames));
-                                    DBGPRINT(F(" frames missing "));
-                                    DBGPRINTLN(F("-> complete retransmit"));
+mLogQueue->add_missingFrames(String(q->iv->id), String(missedFrames));
+mLogQueue->add_Reset(String(q->iv->id));
+//                                    DPRINT_IVID(DBG_INFO, q->iv->id);
+//                                    DBGPRINT(String(missedFrames));
+//                                    DBGPRINT(F(" frames missing "));
+//                                    DBGPRINTLN(F("-> complete retransmit"));
                                 }
                                 mHeu.evalTxChQuality(q->iv, false, (q->attemptsMax - 1 - q->attempts), q->iv->curFrmCnt);
                                 q->iv->radioStatistics.txCnt--;
@@ -286,13 +287,13 @@ mLogQueue->add_Timeout(String(q->iv->radio->mRadioWaitTime.getRunTime()));
                         setAttempt();
 
                         if(*mSerialDebug) {
-//mLogQueue->add_Frame();
-                            DPRINT_IVID(DBG_WARN, q->iv->id);
-                            DBGPRINT(F("frame "));
-                            DBGPRINT(String(framnr));
-                            DBGPRINT(F(" missing: request retransmit ("));
-                            DBGPRINT(String(q->attempts));
-                            DBGPRINTLN(F(" attempts left)"));
+mLogQueue->add_missingFrame(String(q->iv->id), String(framnr), String(q->attempts), String(q->attemptsMax));
+//                            DPRINT_IVID(DBG_WARN, q->iv->id);
+//                            DBGPRINT(F("frame "));
+//                            DBGPRINT(String(framnr));
+//                            DBGPRINT(F(" missing: request retransmit ("));
+//                            DBGPRINT(String(q->attempts));
+//                            DBGPRINTLN(F(" attempts left)"));
                         }
                         if (!mIsRetransmit)
                             q->iv->mIsSingleframeReq = true;
@@ -314,6 +315,8 @@ mLogQueue->add_Timeout(String(q->iv->radio->mRadioWaitTime.getRunTime()));
         }
 
         inline void printRxInfo(const queue_s *q, packet_t *p) {
+mLogQueue->add_RX(String(q->iv->id), String(p->ch), String(""), String(p->millis), String("P"), String("D"));
+/*
 //
 DBGPRINTLN(F(""));
             DPRINT_IVID(DBG_INFO, q->iv->id);
@@ -346,8 +349,8 @@ DBGPRINTLN(F(""));
                 DBGPRINT(F(" "));
                 DBGHEXLN(p->packet[9]);
             }
+*/
         }
-
 
         inline uint8_t getFramesExpected(const queue_s *q) {
             if(q->isDevControl)
@@ -957,7 +960,6 @@ DBGPRINTLN(F(""));
                 }
             }
         }
-
 
         void miComplete(Inverter<> *iv) {
             if (*mSerialDebug) {
