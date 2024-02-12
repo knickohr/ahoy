@@ -268,7 +268,7 @@ mLogQueue->add_Timeout(String(q->iv->id), String(q->iv->radio->mRadioWaitTime.ge
                             }
                             if(missedFrames > 3 || (q->cmd == RealTimeRunData_Debug && missedFrames > 1) || ((missedFrames > 1) && ((missedFrames + 2) > q->attempts))) {
                                 if(*mSerialDebug) {
-mLogQueue->add_missingFrames(String(q->iv->id), String(missedFrames));
+mLogQueue->add_missingFrames(q->iv->id, missedFrames);
 mLogQueue->add_Reset(String(q->iv->id));
 //                                    DPRINT_IVID(DBG_INFO, q->iv->id);
 //                                    DBGPRINT(String(missedFrames));
@@ -287,7 +287,7 @@ mLogQueue->add_Reset(String(q->iv->id));
                         setAttempt();
 
                         if(*mSerialDebug) {
-mLogQueue->add_missingFrame(String(q->iv->id), String(framnr), String(q->attempts), String(q->attemptsMax));
+mLogQueue->add_missingFrame(q->iv->id, framnr, q->attempts, q->attemptsMax);
 //                            DPRINT_IVID(DBG_WARN, q->iv->id);
 //                            DBGPRINT(F("frame "));
 //                            DBGPRINT(String(framnr));
@@ -315,7 +315,7 @@ mLogQueue->add_missingFrame(String(q->iv->id), String(framnr), String(q->attempt
         }
 
         inline void printRxInfo(const queue_s *q, packet_t *p) {
-mLogQueue->add_RX(String(q->iv->id), String(p->ch), String(""), String(p->millis), String("P"), String("D"));
+mLogQueue->add_RX(q->iv->id, p->ch, 0, String(p->millis), p);
 /*
 //
 DBGPRINTLN(F(""));
@@ -640,6 +640,7 @@ DBGPRINTLN(F(""));
             mCompleteRetry      = false;
             mState              = States::RESET;
             DBGPRINTLN(F("-----"));
+mLogQueue->setValid();
         }
 
         inline void miHwDecode(packet_t *p, const queue_s *q) {

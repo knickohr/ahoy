@@ -79,7 +79,8 @@ class HmRadio : public Radio {
             #else
                 mNrf24->begin(mSpi.get(), ce, cs);
             #endif
-            mNrf24->setRetries(3, 9); // wait 3*250 = 750us, 16 * 250us -> 4000us = 4ms
+//            mNrf24->setRetries(3, 9); // wait 3*250 = 750us, 16 * 250us -> 4000us = 4ms
+mNrf24->setRetries(3, 15); // wait 3*250 = 750us, 16 * 250us -> 4000us = 4ms
 
             mNrf24->setDataRate(RF24_250KBPS);
             //mNrf24->setAutoAck(true); // enabled by default
@@ -159,7 +160,8 @@ class HmRadio : public Radio {
                 }
                 if (rx_ready) {
                     // Daten vom WR empfangen
-                    mLogQueue->add_IRQ_Data(String(mLastIv->id), "");
+//                    mLogQueue->add_IRQ_Data(String(mLastIv->id), String(mNrf24->testRPD() ? -64 : -75));
+                    mLogQueue->add_IRQ_Data(String(mLastIv->id), String(mNrf24->testRPD()));
 //                    DPRINT_IVID(DBG_INFO, mLastIv->id);
 //                    DBGPRINT(F("id"));
 //                    DBGPRINT(F(" "));
@@ -408,13 +410,14 @@ class HmRadio : public Radio {
 //                DPRINT_IVID(DBG_INFO, iv->id);
                 // Senden
                 // sTX oder rTX beim Senden
-                if (!isRetransmit) {
-                    mLogQueue->add_sTX(String(iv->id), String(mRfChLst[mTxChIdx]), String(""), String(mTxRetriesNext), String("-1,-1"), String(len), String(""));
+                    mLogQueue->add_TX(iv->id, mRfChLst[mTxChIdx], 0, mTxRetries, -1, len, mTxBuf);
+//                if (!isRetransmit) {
+//                    mLogQueue->add_sTX(String(iv->id), String(mRfChLst[mTxChIdx]), String(""), String(mTxRetriesNext), String("-1,-1"), String(len), String(""));
 //                    DBGPRINT(F("s"));
-                } else {
-                    mLogQueue->add_rTX(String(iv->id), String(mRfChLst[mTxChIdx]), String(""), String(mTxRetriesNext), String("-1,-1"), String(len), String(""));
+//                } else {
+//                    mLogQueue->add_rTX(String(iv->id), String(mRfChLst[mTxChIdx]), String(""), String(mTxRetriesNext), String("-1,-1"), String(len), String(""));
 //                    DBGPRINT(F("r"));
-                }
+//                }
 //                DBGPRINT(F("TX("));
 //                DBGPRINT("CH");
 //                if(mTxChIdx == 0)
@@ -462,14 +465,15 @@ class HmRadio : public Radio {
 
             mNrf24->stopListening();
             mNrf24->flush_rx();
-            if(!isRetransmit && (mTxRetries != mTxRetriesNext)) {
-                mNrf24->setRetries(3, mTxRetriesNext);
-                mTxRetries = mTxRetriesNext;
-            }
+//            if(!isRetransmit && (mTxRetries != mTxRetriesNext)) {
+//                mNrf24->setRetries(3, mTxRetriesNext);
+//                mTxRetries = mTxRetriesNext;
+//            }
             mNrf24->setChannel(mRfChLst[mTxChIdx]);
             mNrf24->openWritingPipe(reinterpret_cast<uint8_t*>(&iv->radioId.u64));
             mNrf24->startFastWrite(mTxBuf.data(), len, false, true); // false (3) = request ACK response; true (4) reset CE to high after transmission
             mMillis = millis();
+mLogQueue->set_TxStart(mMillis);
 
             mLastIv = iv;
             iv->mDtuTxCnt++;

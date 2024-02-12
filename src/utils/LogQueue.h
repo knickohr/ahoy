@@ -1,8 +1,51 @@
 #pragma once
 
 #include <Arduino.h>
+#include <ArduinoJson.h>
+
+#include <array>
+
+#include "config/config.h"
+#include "defines.h"
 
 #define LOG_MAX_BUFFER 250;
+
+/**
+ * IV
+ * TX
+ * RX
+ * IA
+ * IN
+ * ID
+ * TO
+ *
+ * a =                          A =
+ * b =                          B =
+ * c = nRF Channel              C =
+ * d =                          D = Data
+ * e =                          E =
+ * f = cmt Frequency            F =
+ * g =                          G =
+ * h = HW Retries               H = HW Retries Max
+ * i = id                       I = IV Id
+ * j =                          J =
+ * k =                          K =
+ * l =                          L =
+ * m =                          M =
+ * n =                          N =
+ * o =                          O =
+ * p =                          P = Payload
+ * q =                          Q =
+ * r = rssi                     R =
+ * s = SW Retransmits           S = SW Retransmits Max
+ * t = Time                     T = Timeout
+ * u =                          U =
+ * v =                          V =
+ * w =                          W =
+ * x =                          X =
+ * y =                          Y =
+ * z = Timestamp                Z =
+ */
 
 class LogQueue {
    public:
@@ -10,243 +53,235 @@ class LogQueue {
 
     ~LogQueue(){};
 
-    void setup(uint32_t *timestamp, uint16_t *tsMillis) {
-//        mTimestamp = timestamp;
+    void setup(bool *serialDebug, bool *privacyMode, bool *printWholeTrace) {
+        _PrivacyMode = privacyMode;
+        _SerialDebug = serialDebug;
+        _PrintWholeTrace = printWholeTrace;
     };
 
-    void loop(void){};
-
-    void add_sTX(String ivId = "", String txCh = "", String txFreq = "", String txHwRetries = "", String txSwRetransmit = "", String txPayload = "", String txData = "") {
-        // Timestamp
-        mMicrosStart = millis();
-        // NewLine
-        DBGPRINTLN(F(""));
-        // Debug
-        DPRINT_IVID(DBG_INFO, ivId);
-        DBGPRINT(F("sTX("));
-        DBGPRINT(F("t=0,"));
-        if (txCh != "") {
-            DBGPRINT(F("c="));
-            DBGPRINT(String(txCh));
-            DBGPRINT(F(","));
+    void loop(void) {
+        if (_isValid) {
+            _isValid = false;
+            print();
         }
-        if (txFreq != "") {
-            DBGPRINT(F("f="));
-            DBGPRINT(String(txFreq));
-            DBGPRINT(F(","));
-        }
-        DBGPRINT(F("Re="));
-        DBGPRINT(String(txHwRetries));
-        DBGPRINT(F(",RT="));
-        DBGPRINT(String(txSwRetransmit));
-        DBGPRINT(F(",P="));
-        DBGPRINT(String(txPayload));
-        DBGPRINT(F(",D="));
-        DBGPRINT(String(txData));
-        DBGPRINT(F(") "));
-    };
-
-    void add_rTX(String ivId = "", String txCh = "", String txFreq = "", String txHwRetries = "", String txSwRetransmit = "", String txPayload = "", String txData = "") {
-        // Timestamp
-        unsigned long t = millis() - mMicrosStart;
-        // NewLine
-        DBGPRINTLN(F(""));
-        // Debug
-        DPRINT_IVID(DBG_INFO, ivId);
-        DBGPRINT(F("rTX("));
-        DBGPRINT(F("t="));
-        DBGPRINT(String(t));
-        DBGPRINT(F(","));
-        if (txCh != "") {
-            DBGPRINT(F("c="));
-            DBGPRINT(String(txCh));
-            DBGPRINT(F(","));
-        }
-        if (txFreq != "") {
-            DBGPRINT(F("f="));
-            DBGPRINT(String(txFreq));
-            DBGPRINT(F(","));
-        }
-        DBGPRINT(F("Re="));
-        DBGPRINT(String(txHwRetries));
-        DBGPRINT(F(",RT="));
-        DBGPRINT(String(txSwRetransmit));
-        DBGPRINT(F(",P="));
-        DBGPRINT(String(txPayload));
-        DBGPRINT(F(",D="));
-        DBGPRINT(String(txData));
-        DBGPRINT(F(") "));
-    };
-
-    void add_Timeout(String ivId = "", String txTimeout = "") {
-        // Timestamp
-        unsigned long t = millis() - mMicrosStart;
-        // NewLine
-        DBGPRINTLN(F(""));
-        // Debug
-        DPRINT_IVID(DBG_INFO, ivId);
-        DBGPRINT(F("TO("));
-        DBGPRINT(F("t="));
-        DBGPRINT(String(t));
-        DBGPRINT(F(","));
-        DBGPRINT(F("TO="));
-        DBGPRINT(String(txTimeout));
-        DBGPRINT(F(") "));
-    };
-
-    void add_RX(String ivId = "", String rxCh = "", String rxFreq = "", String rxTime = "", String rxPayload = "", String rxData = "") {
-        // Timestamp
-        unsigned long t = millis() - mMicrosStart;
-        // NewLine
-        DBGPRINTLN(F(""));
-        // Debug
-        DPRINT_IVID(DBG_INFO, ivId);
-        DBGPRINT(F("RX("));
-        DBGPRINT(F("t="));
-        DBGPRINT(String(t));
-        DBGPRINT(F(","));
-        if (rxCh != "") {
-            DBGPRINT(F("c="));
-            DBGPRINT(String(rxCh));
-            DBGPRINT(F(","));
-        }
-        if (rxFreq != "") {
-            DBGPRINT(F("f="));
-            DBGPRINT(String(rxFreq));
-            DBGPRINT(F(","));
-        }
-        DBGPRINT(F(",T="));
-        DBGPRINT(String(rxTime));
-        DBGPRINT(F(",P="));
-        DBGPRINT(String(rxPayload));
-        DBGPRINT(F(",D="));
-        DBGPRINT(String(rxData));
-        DBGPRINT(F(") "));
-
-
-/*
-            DBGPRINT(String(p->len));
-            if(INV_RADIO_TYPE_NRF == q->iv->ivRadioType) {
-                DBGPRINT(F(" CH"));
-                if(3 == p->ch)
-                    DBGPRINT(F("0"));
-                DBGPRINT(String(p->ch));
-                DBGPRINT(F(" "));
-            } else {
-                DBGPRINT(F(" "));
-                DBGPRINT(String(p->rssi));
-                DBGPRINT(F("dBm "));
-            }
-            if(*mPrintWholeTrace) {
-                DBGPRINT(F("| "));
-                if(*mPrivacyMode)
-                    ah::dumpBuf(p->packet, p->len, 1, 8);
-                else
-                    ah::dumpBuf(p->packet, p->len);
-            } else {
-                DBGPRINT(F("| "));
-                DHEX(p->packet[0]);
-                DBGPRINT(F(" "));
-                DBGHEXLN(p->packet[9]);
-            }
-*/
-
-
     }
 
-    void add_missingFrame(String ivId, String nr, String attemp, String attemptsMax) {
-        // Timestamp
-        unsigned long t = millis() - mMicrosStart;
-        // NewLine
-        DBGPRINTLN(F(""));
-        // Debug
-        DPRINT_IVID(DBG_INFO, ivId);
-        DBGPRINT(F("Fm("));
-        DBGPRINT(String(nr));
-        DBGPRINT(F(" RT("));
-        DBGPRINT(String(attemp));
-        DBGPRINT(F(","));
-        DBGPRINT(String(attemptsMax));
-        DBGPRINT(F("))"));
+    void setValid(void) {
+        _isValid = true;
     }
 
-    void add_missingFrames(String ivId, String text) {
+    void add_TX(uint8_t ivId, uint8_t channel, uint8_t frequency, uint8_t hwRetries, uint8_t swRetransmit, uint8_t payload, std::array<uint8_t, MAX_RF_PAYLOAD_SIZE> txBuff) {
         // Timestamp
-        unsigned long t = millis() - mMicrosStart;
-        // NewLine
-        DBGPRINTLN(F(""));
-        // Debug
-        DPRINT_IVID(DBG_INFO, ivId);
-        DBGPRINT(F("mF(t="));
-        DBGPRINT(String(t));
-        DBGPRINT(F(",c="));
-        DBGPRINT(String(text));
-        DBGPRINT(F(") "));
+        mMillisStart = millis();
+        unsigned long t = millis() - mMillisStart;
+        // JSON
+        JsonObject TX = _jsonLog["TX"].to<JsonObject>();
+        TX["I"] = ivId;
+        TX["t"] = t;
+        if (channel != 0)
+            TX["c"] = channel;
+        if (frequency != 0)
+            TX["f"] = frequency;
+        TX["h"] = hwRetries;
+        TX["s"] = swRetransmit;
+        TX["P"] = payload;
+        JsonArray data = TX["D"].to<JsonArray>();
+        if (*_PrintWholeTrace) {
+            for (uint8_t i = 0; i < payload; i++) {
+                if (*_PrivacyMode) {
+                    if ((i <= 1) && (i >= 8)) {
+                        data.add("*");
+                    } else {
+                        data.add(dec2hex(txBuff[i]));
+                    }
+                } else {
+                    data.add(dec2hex(txBuff[i]));
+                }
+            }
+        } else {
+            data.add(dec2hex(txBuff[0]));
+            data.add(dec2hex(txBuff[10]));
+            data.add(dec2hex(txBuff[9]));
+        }
+    };
+
+    void add_xrTX(String ivId = "", String txCh = "", String txFreq = "", String txHwRetries = "", String txSwRetransmit = "", String txPayload = "", String txData = "") {
+        // Timestamp
+        mMillisStart = millis();
+        unsigned long t = millis() - mMillisStart;
+        // JSON
+        JsonObject rTX = _jsonLog["rTX"].to<JsonObject>();
+        // Timestamp
+        rTX["t"] = t;
+        // Channel
+        if (txCh != "")
+            rTX["ch"] = txCh;
+        // Frequency
+        if (txFreq != "")
+            rTX["freq"] = txFreq;
+        // HW Retries
+        rTX["Re"] = txHwRetries;
+        // SW Retransmits
+        rTX["RT"] = txSwRetransmit;
+        /*
+                // Payload
+                rTX["P"] = txPayload;
+                // Data
+                JsonArray data = rTX["D"].to<JsonArray>();
+                for (uint8_t i = 0; i < 5; i++) {
+                    data.add("?");
+                }
+        */
+        /*
+                DBGPRINT(F(",P="));
+                DBGPRINT(String(txPayload));
+                DBGPRINT(F(",D="));
+                DBGPRINT(String(txData));
+        */
+    };
+
+    void set_TxStart(uint32_t tspMillis = millis()) {
+        mMillisStart = tspMillis;
+    }
+
+    void add_Timeout(String ivId = "", String timeout = "") {
+        // Timestamp
+        unsigned long t = millis() - mMillisStart;
+        // JSON
+        JsonObject TO = _jsonLog["TO"].to<JsonObject>();
+        TO["I"] = ivId;
+        TO["t"] = t;
+        TO["T"] = timeout;
+    };
+
+    void add_RX(uint8_t ivId = 0, uint8_t channel = 0, uint8_t frequency = 0, String rxTime = "", packet_t *p = NULL) {
+        // Timestamp
+        unsigned long t = millis() - mMillisStart;
+        // JSON
+        JsonObject RX = _jsonLog["RX"].to<JsonObject>();
+        RX["I"] = ivId;
+        RX["t"] = t;
+        if (channel != 0)
+            RX["c"] = channel;
+        if (frequency != 0)
+            RX["f"] = frequency;
+        //        RX["T"] = rxTime;
+        /*
+                    DBGPRINT(String(p->len));
+                    if(INV_RADIO_TYPE_NRF == q->iv->ivRadioType) {
+                        DBGPRINT(F(" CH"));
+                        if(3 == p->ch)
+                            DBGPRINT(F("0"));
+                        DBGPRINT(String(p->ch));
+                        DBGPRINT(F(" "));
+                    } else {
+                        DBGPRINT(F(" "));
+                        DBGPRINT(String(p->rssi));
+                        DBGPRINT(F("dBm "));
+                    }
+        */
+        // Data
+        JsonArray data = RX["D"].to<JsonArray>();
+        if (*_PrintWholeTrace) {
+            for (uint8_t i = 0; i < p->len; i++) {
+                data.add(dec2hex(p->packet[i]));
+                if (*_PrivacyMode) {
+                    if ((i <= 1) && (i >= 8)) {
+                        data.add("*");
+                    } else {
+                        data.add(dec2hex(p->packet[i]));
+                    }
+                } else {
+                    data.add(dec2hex(p->packet[i]));
+                }
+            }
+        } else {
+            data.add(dec2hex(p->packet[0]));
+            data.add(dec2hex(p->packet[9]));
+        }
+    }
+
+    void add_missingFrame(uint8_t ivId, uint8_t nr, uint8_t attemp, uint8_t attemptsMax) {
+        // Timestamp
+        unsigned long t = millis() - mMillisStart;
+        // JSON
+        JsonObject Fm = _jsonLog["Fm"].to<JsonObject>();
+        Fm["I"] = ivId;
+        Fm["t"] = t;
+        Fm["i"] = nr;
+        Fm["s"] = (attemptsMax - attemp);
+        Fm["S"] = attemptsMax;
+    }
+
+    void add_missingFrames(uint8_t ivId, uint8_t text) {
+        // Timestamp
+        unsigned long t = millis() - mMillisStart;
+        // JSON
+        JsonObject mF = _jsonLog["mF"].to<JsonObject>();
+        mF["I"] = ivId;
+        mF["t"] = t;
+        mF["c"] = text;
     }
 
     void add_Reset(String ivId) {
         // Timestamp
-        unsigned long t = millis() - mMicrosStart;
-        // NewLine
-        DBGPRINTLN(F(""));
-        // Debug
-        DPRINT_IVID(DBG_INFO, ivId);
-        DBGPRINT(F("RST(t="));
-        DBGPRINT(String(t));
-        DBGPRINT(F(") "));
+        unsigned long t = millis() - mMillisStart;
+        // JSON
+        JsonObject RST = _jsonLog["RST"].to<JsonObject>();
+        RST["I"] = ivId;
+        RST["t"] = t;
     }
-
-    void add_Frame(){
-
-    };
 
     void add_IRQ_ACK(String ivId = "", String index = "") {
         // Timestamp
-        unsigned long t = millis() - mMicrosStart;
-        // NewLine
-        DBGPRINTLN(F(""));
-        // Debug
-        DPRINT_IVID(DBG_INFO, ivId);
-        DBGPRINT(F("ia(t="));
-        DBGPRINT(String(t));
-        DBGPRINT(F(",i="));
-        DBGPRINT(String(index));
-        DBGPRINT(F(") "));
+        unsigned long t = millis() - mMillisStart;
+        // JSON
+        JsonObject IrqACK = _jsonLog["IA"].to<JsonObject>();
+        IrqACK["I"] = ivId;
+        IrqACK["t"] = t;
+        IrqACK["i"] = index;
     };
 
     void add_IRQ_NACK(String ivId = "", String index = "") {
         // Timestamp
-        unsigned long t = millis() - mMicrosStart;
-        // NewLine
-        DBGPRINTLN(F(""));
-        // Debug
-        DPRINT_IVID(DBG_INFO, ivId);
-        DBGPRINT(F("in(t="));
-        DBGPRINT(String(t));
-        DBGPRINT(F(",i="));
-        DBGPRINT(String(index));
-        DBGPRINT(F(") "));
+        unsigned long t = millis() - mMillisStart;
+        // JSON
+        JsonObject IrqNACK = _jsonLog["IN"].to<JsonObject>();
+        IrqNACK["I"] = ivId;
+        IrqNACK["t"] = t;
+        IrqNACK["i"] = index;
     };
 
-    void add_IRQ_Data(String ivId = "", String index = "") {
+    void add_IRQ_Data(String ivId = "", String rssi = "") {
         // Timestamp
-        unsigned long t = millis() - mMicrosStart;
-        // NewLine
-        DBGPRINTLN(F(""));
-        // Debug
-        DPRINT_IVID(DBG_INFO, ivId);
-        DBGPRINT(F("id(t="));
-//        DBGPRINT(String(index));
-//        DBGPRINT(F(",t="));
-        DBGPRINT(String(t));
-        DBGPRINT(F(") "));
+        unsigned long t = millis() - mMillisStart;
+        // JSON
+        JsonObject IrqData = _jsonLog["ID"].to<JsonObject>();
+        IrqData["I"] = ivId;
+        IrqData["t"] = t;
+        IrqData["r"] = rssi;
     };
 
-    void print(){};
+    void print() {
+        DBGPRINTLN(_jsonLog.as<String>());
+        _jsonLog.clear();
+    }
 
    private:
-//    uint32_t *mTimestamp = nullptr;
-//    uint32_t mTimestampStart = 0;
-//    uint32_t mMillis = 0;
-    unsigned long mMicrosStart = 0;
+    String dec2hex(uint8_t zahl) {
+        String hex = String(zahl, HEX);
+        if (hex.length() < 2)
+            hex = String("0") + String(zahl, HEX);
+        return hex;
+    }
+
+    bool *_PrivacyMode = nullptr;
+    bool *_SerialDebug = nullptr;
+    bool *_PrintWholeTrace = nullptr;
+    bool _isValid = false;
+    //    uint32_t *mTimestamp = nullptr;
+    //    uint32_t mTimestampStart = 0;
+    //    uint32_t mMillis = 0;
+    unsigned long mMillisStart = 0;
+    StaticJsonDocument<5000> _jsonLog;
 };
