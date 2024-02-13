@@ -98,22 +98,23 @@ class CmtRadio : public Radio {
             updateCrcs(&len, appendCrc16);
 
             if(*mSerialDebug) {
-                DPRINT_IVID(DBG_INFO, iv->id);
-                DBGPRINT(F("TX "));
-                DBGPRINT(String(mCmt.getFreqKhz()/1000.0f));
-                DBGPRINT(F("Mhz | "));
-                if(*mPrintWholeTrace) {
-                    if(*mPrivacyMode)
-                        ah::dumpBuf(mTxBuf.data(), len, 1, 4);
-                    else
-                        ah::dumpBuf(mTxBuf.data(), len);
-                } else {
-                    DHEX(mTxBuf[0]);
-                    DBGPRINT(F(" "));
-                    DHEX(mTxBuf[10]);
-                    DBGPRINT(F(" "));
-                    DBGHEXLN(mTxBuf[9]);
-                }
+mLogQueue->add_TX(iv->id, 0, mCmt.getFreqKhz()/1000.0f, 0, 0, len, mTxBuf);
+//                DPRINT_IVID(DBG_INFO, iv->id);
+//                DBGPRINT(F("TX "));
+//                DBGPRINT(String(mCmt.getFreqKhz()/1000.0f));
+//                DBGPRINT(F("Mhz | "));
+//                if(*mPrintWholeTrace) {
+//                    if(*mPrivacyMode)
+//                        ah::dumpBuf(mTxBuf.data(), len, 1, 4);
+//                    else
+//                        ah::dumpBuf(mTxBuf.data(), len);
+//                } else {
+//                    DHEX(mTxBuf[0]);
+//                    DBGPRINT(F(" "));
+//                    DHEX(mTxBuf[10]);
+//                    DBGPRINT(F(" "));
+//                    DBGHEXLN(mTxBuf[9]);
+//                }
             }
 
             CmtStatus status = mCmt.tx(mTxBuf.data(), len);

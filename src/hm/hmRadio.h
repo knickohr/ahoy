@@ -410,7 +410,7 @@ mNrf24->setRetries(3, 15); // wait 3*250 = 750us, 16 * 250us -> 4000us = 4ms
 //                DPRINT_IVID(DBG_INFO, iv->id);
                 // Senden
                 // sTX oder rTX beim Senden
-                    mLogQueue->add_TX(iv->id, mRfChLst[mTxChIdx], 0, mTxRetries, -1, len, mTxBuf);
+                    mLogQueue->add_TX(iv->id, mRfChLst[mTxChIdx], 0, mTxRetries, 0, len, mTxBuf);
 //                if (!isRetransmit) {
 //                    mLogQueue->add_sTX(String(iv->id), String(mRfChLst[mTxChIdx]), String(""), String(mTxRetriesNext), String("-1,-1"), String(len), String(""));
 //                    DBGPRINT(F("s"));
