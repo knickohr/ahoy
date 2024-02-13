@@ -144,7 +144,7 @@ mNrf24->setRetries(3, 15); // wait 3*250 = 750us, 16 * 250us -> 4000us = 4ms
 // ACK() / NACK()
                 if (tx_ok) {
                     // ACK vom WR
-                    mLogQueue->add_IRQ_ACK(String(mLastIv->id), String(mNrf24->getARC()));
+                    mLogQueue->add_IRQ_ACK(mLastIv->id, mNrf24->getARC());
 //                    DPRINT_IVID(DBG_INFO, mLastIv->id);
 //                    DBGPRINT(F("ia("));
 //                    DBGPRINT(String(mNrf24->getARC()));
@@ -152,7 +152,7 @@ mNrf24->setRetries(3, 15); // wait 3*250 = 750us, 16 * 250us -> 4000us = 4ms
                 }
                 if (tx_fail) {
                     // kein ACK vom WR
-                    mLogQueue->add_IRQ_NACK(String(mLastIv->id), String(mNrf24->getARC()));
+                    mLogQueue->add_IRQ_NACK(mLastIv->id, mNrf24->getARC());
 //                    DPRINT_IVID(DBG_INFO, mLastIv->id);
 //                    DBGPRINT(F("in("));
 //                    DBGPRINT(String(mNrf24->getARC()));
@@ -161,7 +161,7 @@ mNrf24->setRetries(3, 15); // wait 3*250 = 750us, 16 * 250us -> 4000us = 4ms
                 if (rx_ready) {
                     // Daten vom WR empfangen
 //                    mLogQueue->add_IRQ_Data(String(mLastIv->id), String(mNrf24->testRPD() ? -64 : -75));
-                    mLogQueue->add_IRQ_Data(String(mLastIv->id), String(mNrf24->testRPD()));
+                    mLogQueue->add_IRQ_Data(mLastIv->id, mNrf24->testRPD());
 //                    DPRINT_IVID(DBG_INFO, mLastIv->id);
 //                    DBGPRINT(F("id"));
 //                    DBGPRINT(F(" "));

@@ -269,7 +269,7 @@ mLogQueue->add_Timeout(String(q->iv->id), String(q->iv->radio->mRadioWaitTime.ge
                             if(missedFrames > 3 || (q->cmd == RealTimeRunData_Debug && missedFrames > 1) || ((missedFrames > 1) && ((missedFrames + 2) > q->attempts))) {
                                 if(*mSerialDebug) {
 mLogQueue->add_missingFrames(q->iv->id, missedFrames);
-mLogQueue->add_Reset(String(q->iv->id));
+mLogQueue->add_Reset(q->iv->id);
 //                                    DPRINT_IVID(DBG_INFO, q->iv->id);
 //                                    DBGPRINT(String(missedFrames));
 //                                    DBGPRINT(F(" frames missing "));

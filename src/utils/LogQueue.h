@@ -223,7 +223,7 @@ class LogQueue {
         mF["c"] = text;
     }
 
-    void add_Reset(String ivId) {
+    void add_Reset(uint8_t ivId) {
         // Timestamp
         unsigned long t = millis() - mMillisStart;
         // JSON
@@ -232,7 +232,7 @@ class LogQueue {
         RST["t"] = t;
     }
 
-    void add_IRQ_ACK(String ivId = "", String index = "") {
+    void add_IRQ_ACK(uint8_t ivId, uint8_t index) {
         // Timestamp
         unsigned long t = millis() - mMillisStart;
         // JSON
@@ -242,7 +242,7 @@ class LogQueue {
         IrqACK["i"] = index;
     };
 
-    void add_IRQ_NACK(String ivId = "", String index = "") {
+    void add_IRQ_NACK(uint8_t ivId, uint8_t index) {
         // Timestamp
         unsigned long t = millis() - mMillisStart;
         // JSON
@@ -252,7 +252,7 @@ class LogQueue {
         IrqNACK["i"] = index;
     };
 
-    void add_IRQ_Data(String ivId = "", String rssi = "") {
+    void add_IRQ_Data(uint8_t ivId, uint8_t rssi) {
         // Timestamp
         unsigned long t = millis() - mMillisStart;
         // JSON
