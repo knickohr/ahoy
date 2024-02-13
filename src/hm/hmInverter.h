@@ -132,7 +132,6 @@ class Inverter {
         record_t<REC_TYP> recordAlarm;                      // structure for alarm values
         InverterStatus status = InverterStatus::OFF;        // indicates the current inverter status
         std::array<alarm_t, 10> lastAlarm;                  // holds last 10 alarms
-        uint8_t       rxOffset = 0;                         // holds the default channel offset between tx and rx channel (nRF only)
         int8_t        rssi = 0;                             // RSSI
         uint16_t      alarmCnt = 0;                         // counts the total number of occurred alarms
         uint16_t      alarmLastId = 0;                      // lastId which was received
@@ -164,9 +163,10 @@ class Inverter {
 
         void tickSend(std::function<void(uint8_t cmd, bool isDevControl)> cb) {
             if(mDevControlRequest) {
-                if(InverterStatus::OFF != status)
+                if(InverterStatus::OFF != status) {
                     cb(devControlCmd, true);
-                else
+                    devControlCmd = InitDataState;
+                } else
                     DPRINTLN(DBG_WARN, F("Inverter is not avail"));
                 mDevControlRequest = false;
             } else if (IV_MI != ivGen) { // HM / HMS / HMT

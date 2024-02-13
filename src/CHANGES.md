@@ -1,5 +1,29 @@
 # Development Changes
 
+## 0.8.80 - 2024-02-12
+* optimize API authentication, Error-Codes #1415
+* breaking change: authentication API command changed #1415
+* breaking change: limit has to be send als `float`, `0.0 .. 100.0` #1415
+* updated documentation #1415
+* fix don't send control command twice #1426
+
+## 0.8.79 - 2024-02-11
+* fix `opendtufusion` build (started only once USB-console was connected)
+* code quality improvments
+
+## 0.8.78 - 2024-02-10
+* finalized API token access #1415
+* possible fix of MqTT fix "total values are sent to often" #1421
+* removed `switchCycle` from `hmsRadio.h` #1412
+* merge PR: Add hint to INV_RESET_MIDNIGHT resp. INV_PAUSE_DURING_NIGHT #1418
+* merge PR: simplify rxOffset logic #1417
+* code quality improvments
+
+## 0.8.77 - 2024-02-08
+* merge PR: BugFix: ACK #1414
+* fix suspicious if condition #1416
+* prepared API token for access, not functional #1415
+
 ## 0.8.76 - 2024-02-07
 * revert changes from yesterday regarding snprintf and its size #1410, #1411
 * reduced cppcheck linter warnings significantly

@@ -79,6 +79,7 @@ class HmRadio : public Radio {
             #else
                 mNrf24->begin(mSpi.get(), ce, cs);
             #endif
+// TODO: Dynamic Retries vorr�bergehend deaktiviert.
 //            mNrf24->setRetries(3, 9); // wait 3*250 = 750us, 16 * 250us -> 4000us = 4ms
 mNrf24->setRetries(3, 15); // wait 3*250 = 750us, 16 * 250us -> 4000us = 4ms
 
@@ -140,33 +141,15 @@ mNrf24->setRetries(3, 15); // wait 3*250 = 750us, 16 * 250us -> 4000us = 4ms
                 // here we got news from the nRF
                 mIrqRcvd     = false;
                 mNrf24->whatHappened(tx_ok, tx_fail, rx_ready); // resets the IRQ pin to HIGH
-// 0.8.760002+4
-// ACK() / NACK()
-                if (tx_ok) {
-                    // ACK vom WR
-                    mLogQueue->add_IRQ_ACK(mLastIv->id, mNrf24->getARC());
-//                    DPRINT_IVID(DBG_INFO, mLastIv->id);
-//                    DBGPRINT(F("ia("));
-//                    DBGPRINT(String(mNrf24->getARC()));
-//                    DBGPRINT(") ");
-                }
-                if (tx_fail) {
-                    // kein ACK vom WR
-                    mLogQueue->add_IRQ_NACK(mLastIv->id, mNrf24->getARC());
-//                    DPRINT_IVID(DBG_INFO, mLastIv->id);
-//                    DBGPRINT(F("in("));
-//                    DBGPRINT(String(mNrf24->getARC()));
-//                    DBGPRINT(") ");
-                }
-                if (rx_ready) {
-                    // Daten vom WR empfangen
-//                    mLogQueue->add_IRQ_Data(String(mLastIv->id), String(mNrf24->testRPD() ? -64 : -75));
-                    mLogQueue->add_IRQ_Data(mLastIv->id, mNrf24->testRPD());
-//                    DPRINT_IVID(DBG_INFO, mLastIv->id);
-//                    DBGPRINT(F("id"));
-//                    DBGPRINT(F(" "));
-                }
-// Ende 0.8.760002
+if (tx_ok) {
+    mLogQueue->add_IRQ_ACK(mLastIv->id, mNrf24->getARC());
+}
+if (tx_fail) {
+    mLogQueue->add_IRQ_NACK(mLastIv->id, mNrf24->getARC());
+}
+if (rx_ready) {
+    mLogQueue->add_IRQ_Data(mLastIv->id, mNrf24->testRPD() ? -64 : -75);
+}
                 mLastIrqTime = millis();
 
                 if(tx_ok || tx_fail) { // tx related interrupt, basically we should start listening
@@ -182,31 +165,22 @@ mNrf24->setRetries(3, 15); // wait 3*250 = 750us, 16 * 250us -> 4000us = 4ms
                     if(tx_ok)
                         mLastIv->mAckCount++;
 
-                    //#ifdef DYNAMIC_OFFSET
-                    mRxChIdx = (mTxChIdx + mLastIv->rxOffset) % RF_CHANNELS;
-                    /*#else
-                    mRxChIdx = (mTxChIdx + 2) % RF_CHANNELS;
-                    #endif*/
+                    rxOffset = mLastIv->ivGen == IV_HM ? 3 : 2;          // holds the default channel offset between tx and rx channel (nRF only)
+                    mRxChIdx = (mTxChIdx + rxOffset) % RF_CHANNELS;
                     mNrf24->setChannel(mRfChLst[mRxChIdx]);
                     mNrf24->startListening();
                     mTimeslotStart = millis();
                     tempRxChIdx = mRxChIdx;  // might be better to start off with one channel less?
                     mRxPendular = false;
-                    mNRFloopChannels = (mLastIv->ivGen == IV_MI);
-
-                    //innerLoopTimeout = mLastIv->ivGen != IV_MI ? DURATION_TXFRAME : DURATION_ONEFRAME;
-                    //innerLoopTimeout = mLastIv->ivGen != IV_MI ? DURATION_LISTEN_MIN : 4;
-                    //innerLoopTimeout = (mLastIv->mIsSingleframeReq || mLastIv->ivGen == IV_MI) ? DURATION_LISTEN_MIN : DURATION_TXFRAME;
+                    mNRFloopChannels = (mLastIv->mCmd == MI_REQ_CH1);
                     innerLoopTimeout = DURATION_LISTEN_MIN;
                 }
 
                 if(rx_ready) {
                     if (getReceived()) { // check what we got, returns true for last package or success for single frame request
                         mNRFisInRX = false;
-                        rx_ready = false;
                         mRadioWaitTime.startTimeMonitor(DURATION_PAUSE_LASTFR); // let the inverter first end his transmissions
                         mNrf24->stopListening();
-                        return false;
                     } else {
                         innerLoopTimeout = DURATION_LISTEN_MIN;
                         mTimeslotStart = millis();
@@ -218,7 +192,6 @@ mNrf24->setRetries(3, 15); // wait 3*250 = 750us, 16 * 250us -> 4000us = 4ms
                             } else
                                 mRxChIdx = tempRxChIdx;
                         }
-                        return true;
                     }
                     rx_ready = false; // reset
                     return mNRFisInRX;
@@ -347,9 +320,11 @@ mNrf24->setRetries(3, 15); // wait 3*250 = 750us, 16 * 250us -> 4000us = 4ms
 
                     if (p.packet[0] != 0x00) {
                         if(!checkIvSerial(p.packet, mLastIv)) {
-                            DPRINT(DBG_WARN, "RX other inverter ");
+                            DPRINT(DBG_WARN, F("RX other inverter "));
                             if(!*mPrivacyMode)
                                 ah::dumpBuf(p.packet, p.len);
+                            else
+                                DBGPRINTLN(F(""));
                         } else {
                             mLastIv->mGotFragment = true;
                             mBufCtrl.push(p);
@@ -361,14 +336,6 @@ mNrf24->setRetries(3, 15); // wait 3*250 = 750us, 16 * 250us -> 4000us = 4ms
 
                                 if(isLastPackage)
                                     setExpectedFrames(p.packet[9] - ALL_FRAMES);
-                                #ifdef DYNAMIC_OFFSET
-                                if((p.packet[9] == 1) && (p.millis < DURATION_ONEFRAME))
-                                    mLastIv->rxOffset = (RF_CHANNELS + mTxChIdx - tempRxChIdx + 1) % RF_CHANNELS;
-                                else if(mNRFloopChannels && (mLastIv->rxOffset > RF_CHANNELS)) { // unsure setting?
-                                    mLastIv->rxOffset = (RF_CHANNELS + mTxChIdx - tempRxChIdx + (isLastPackage ? mFramesExpected : p.packet[9]));  // make clear it's not sure, start with one more offset
-                                    mNRFloopChannels = false;
-                                }
-                                #endif
                             }
 
                             if(IV_MI == mLastIv->ivGen) {
@@ -376,10 +343,6 @@ mNrf24->setRetries(3, 15); // wait 3*250 = 750us, 16 * 250us -> 4000us = 4ms
                                     isLastPackage = (p.packet[9] > 0x10);                // > 0x10 indicates last packet received
                                 else if ((p.packet[0] != 0x88) && (p.packet[0] != 0x92)) // ignore MI status messages //#0 was p.packet[0] != 0x00 &&
                                     isLastPackage = true;                                // response from dev control command
-                                #ifdef DYNAMIC_OFFSET
-                                if((p.packet[9] == 0x00) && (p.millis < DURATION_ONEFRAME))
-                                    mLastIv->rxOffset = (RF_CHANNELS + mTxChIdx - tempRxChIdx - 1) % RF_CHANNELS;
-                                #endif
                             }
                             rx_ready = true; //reset in case we first read messages from other inverter or ACK zero payloads
                         }
@@ -400,71 +363,40 @@ mNrf24->setRetries(3, 15); // wait 3*250 = 750us, 16 * 250us -> 4000us = 4ms
             mTxChIdx = iv->heuristics.txRfChId;
 
             if(*mSerialDebug) {
-// 0.8.7600xx
                 /*if(!isRetransmit) {
                     DPRINT(DBG_INFO, "last tx setup: ");
                     DBGPRINT(String(mTxSetupTime));
                     DBGPRINTLN("ms");
                 }*/
 
+mLogQueue->add_TX(iv->id, mRfChLst[mTxChIdx], 0, mTxRetries, 0, len, mTxBuf);
 //                DPRINT_IVID(DBG_INFO, iv->id);
-                // Senden
-                // sTX oder rTX beim Senden
-                    mLogQueue->add_TX(iv->id, mRfChLst[mTxChIdx], 0, mTxRetries, 0, len, mTxBuf);
-//                if (!isRetransmit) {
-//                    mLogQueue->add_sTX(String(iv->id), String(mRfChLst[mTxChIdx]), String(""), String(mTxRetriesNext), String("-1,-1"), String(len), String(""));
-//                    DBGPRINT(F("s"));
-//                } else {
-//                    mLogQueue->add_rTX(String(iv->id), String(mRfChLst[mTxChIdx]), String(""), String(mTxRetriesNext), String("-1,-1"), String(len), String(""));
-//                    DBGPRINT(F("r"));
-//                }
-//                DBGPRINT(F("TX("));
-//                DBGPRINT("CH");
+//                DBGPRINT(F("TX "));
+//                DBGPRINT(String(len));
+//                DBGPRINT(" CH");
 //                if(mTxChIdx == 0)
 //                    DBGPRINT("0");
 //                DBGPRINT(String(mRfChLst[mTxChIdx]));
-//                DBGPRINT(F(") "));
-                // Retries
-//                DBGPRINT(F("Re("));
+//                DBGPRINT(F(", "));
 //                DBGPRINT(String(mTxRetriesNext));
-//                DBGPRINT(F(") "));
-                // Retransmits
-//                DBGPRINT(F("RT("));
-//                DBGPRINT(String(-1));
-//                DBGPRINT(F(","));
-//                DBGPRINT(String(-1));
-//                DBGPRINT(F(") "));
-                // Payload
-//                DBGPRINT(F("P("));
-//                DBGPRINT(String(len));
-//                DBGPRINT(F(") "));
-                // Data
-/*
-                String data = "";
-                DBGPRINT(F("D("));
-                if (*mPrintWholeTrace) {
-                    if (*mPrivacyMode) {
-                        data = "";
-                        ah::dumpBuf(mTxBuf.data(), len, 1, 4);
-                    } else {
-                        data = "";
-                        ah::dumpBuf(mTxBuf.data(), len);
-                    }
-                } else {
-                    data = "";
-                    DHEX(mTxBuf[0]);
-                    DBGPRINT(F(" "));
-                    DHEX(mTxBuf[10]);
-                    DBGPRINT(F(" "));
-                    DHEX(mTxBuf[9]);
-                }
-                DBGPRINT(F(") "));
-*/
-// Ende - 0.8.7600xx
+//                DBGPRINT(F(" ret. | "));
+//                if(*mPrintWholeTrace) {
+//                    if(*mPrivacyMode)
+//                        ah::dumpBuf(mTxBuf.data(), len, 1, 4);
+//                    else
+//                        ah::dumpBuf(mTxBuf.data(), len);
+//                } else {
+//                    DHEX(mTxBuf[0]);
+//                    DBGPRINT(F(" "));
+//                    DHEX(mTxBuf[10]);
+//                    DBGPRINT(F(" "));
+//                    DBGHEXLN(mTxBuf[9]);
+//                }
             }
 
             mNrf24->stopListening();
             mNrf24->flush_rx();
+// TODO: Dynamic Retries vorr�bergehend deaktiviert.
 //            if(!isRetransmit && (mTxRetries != mTxRetriesNext)) {
 //                mNrf24->setRetries(3, mTxRetriesNext);
 //                mTxRetries = mTxRetriesNext;
@@ -513,6 +445,7 @@ mLogQueue->set_TxStart(mMillis);
         bool mRxPendular = false;
         uint32_t innerLoopTimeout = DURATION_LISTEN_MIN;
         uint8_t mTxRetries = 15;                            // memorize last setting for mNrf24->setRetries(3, 15);
+        uint8_t rxOffset = 3;                               // holds the channel offset between tx and rx channel used for actual inverter
 
         std::unique_ptr<SPIClass> mSpi;
         std::unique_ptr<RF24> mNrf24;

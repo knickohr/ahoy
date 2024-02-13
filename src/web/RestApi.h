@@ -30,10 +30,6 @@
 #define F(sl) (sl)
 #endif
 
-const uint8_t acList[] = {FLD_UAC, FLD_IAC, FLD_PAC, FLD_F, FLD_PF, FLD_T, FLD_YT, FLD_YD, FLD_PDC, FLD_EFF, FLD_Q, FLD_MP};
-const uint8_t acListHmt[] = {FLD_UAC_1N, FLD_IAC_1, FLD_PAC, FLD_F, FLD_PF, FLD_T, FLD_YT, FLD_YD, FLD_PDC, FLD_EFF, FLD_Q, FLD_MP};
-const uint8_t dcList[] = {FLD_UDC, FLD_IDC, FLD_PDC, FLD_YD, FLD_YT, FLD_IRR, FLD_MP};
-
 template<class HMSYSTEM>
 class RestApi {
     public:
@@ -70,7 +66,7 @@ class RestApi {
             if(obj[F("path")] == "ctrl")
                 setCtrl(obj, dummy, "*");
             else if(obj[F("path")] == "setup")
-                setSetup(obj, dummy);
+                setSetup(obj, dummy, "*");
         }
 
     private:
@@ -169,7 +165,7 @@ class RestApi {
                 if(path == "ctrl")
                     root[F("success")] = setCtrl(obj, root, request->client()->remoteIP().toString().c_str());
                 else if(path == "setup")
-                    root[F("success")] = setSetup(obj, root);
+                    root[F("success")] = setSetup(obj, root, request->client()->remoteIP().toString().c_str());
                 else {
                     root[F("success")] = false;
                     root[F("error")]   = F(PATH_NOT_FOUND) + path;
@@ -266,7 +262,7 @@ class RestApi {
             obj[F("modules")]     = String(mApp->getVersionModules());
             obj[F("build")]       = String(AUTO_GIT_HASH);
             obj[F("env")]         = String(ENV_NAME);
-            obj[F("menu_prot")]   = mApp->isProtected(request->client()->remoteIP().toString().c_str());
+            obj[F("menu_prot")]   = mApp->isProtected(request->client()->remoteIP().toString().c_str(), "", true);
             obj[F("menu_mask")]   = (uint16_t)(mConfig->sys.protectionMask );
             obj[F("menu_protEn")] = (bool) (mConfig->sys.adminPwd[0] != '\0');
             obj[F("cst_lnk")]     = String(mConfig->plugin.customLink);
@@ -831,29 +827,35 @@ class RestApi {
         }
 
         bool setCtrl(JsonObject jsonIn, JsonObject jsonOut, const char *clientIP) {
+            if(jsonIn.containsKey(F("auth"))) {
+                if(String(jsonIn[F("auth")]) == String(mConfig->sys.adminPwd)) {
+                    jsonOut[F("token")] = mApp->unlock(clientIP, false);
+                    jsonIn[F("token")] = jsonOut[F("token")];
+                } else {
+                    jsonOut[F("error")] = F("ERR_AUTH");
+                    return false;
+                }
+                if(!jsonIn.containsKey(F("cmd")))
+                    return true;
+            }
+
+            if(isProtected(jsonIn, jsonOut, clientIP))
+                return false;
+
             Inverter<> *iv = mSys->getInverterByPos(jsonIn[F("id")]);
             bool accepted = true;
             if(NULL == iv) {
-                jsonOut[F("error")] = F(INV_INDEX_INVALID) + jsonIn[F("id")].as<String>();
+                jsonOut[F("error")] = F("ERR_INDEX");
                 return false;
             }
             jsonOut[F("id")] = jsonIn[F("id")];
-
-            if(mConfig->sys.adminPwd[0] != '\0') {
-                if(strncmp("*", clientIP, 1) != 0) { // no call from API (MqTT)
-                    if(mApp->isProtected(clientIP)) {
-                        jsonOut[F("error")] = F(INV_IS_PROTECTED);
-                        return false;
-                    }
-                }
-            }
 
             if(F("power") == jsonIn[F("cmd")])
                 accepted = iv->setDevControlRequest((jsonIn[F("val")] == 1) ? TurnOn : TurnOff);
             else if(F("restart") == jsonIn[F("cmd")])
                 accepted = iv->setDevControlRequest(Restart);
             else if(0 == strncmp("limit_", jsonIn[F("cmd")].as<const char*>(), 6)) {
-                iv->powerLimit[0] = jsonIn["val"];
+                iv->powerLimit[0] = static_cast<uint16_t>(jsonIn["val"].as<float>() * 10.0);
                 if(F("limit_persistent_relative") == jsonIn[F("cmd")])
                     iv->powerLimit[1] = RelativPersistent;
                 else if(F("limit_persistent_absolute") == jsonIn[F("cmd")])
@@ -870,19 +872,22 @@ class RestApi {
                 DPRINTLN(DBG_INFO, F("dev cmd"));
                 iv->setDevCommand(jsonIn[F("val")].as<int>());
             } else {
-                jsonOut[F("error")] = F(UNKNOWN_CMD) + jsonIn["cmd"].as<String>() + "'";
+                jsonOut[F("error")] = F("ERR_UNKNOWN_CMD");
                 return false;
             }
 
             if(!accepted) {
-                jsonOut[F("error")] = F(INV_DOES_NOT_ACCEPT_LIMIT_AT_MOMENT);
+                jsonOut[F("error")] = F("ERR_LIMIT_NOT_ACCEPT");
                 return false;
             }
 
             return true;
         }
 
-        bool setSetup(JsonObject jsonIn, JsonObject jsonOut) {
+        bool setSetup(JsonObject jsonIn, JsonObject jsonOut, const char *clientIP) {
+            if(isProtected(jsonIn, jsonOut, clientIP))
+                return false;
+
             #if !defined(ETHERNET)
             if(F("scan_wifi") == jsonIn[F("cmd")])
                 mApp->scanAvailNetworks();
@@ -923,13 +928,39 @@ class RestApi {
                 iv->config->disNightCom = jsonIn[F("disnightcom")];
                 mApp->saveSettings(false); // without reboot
             } else {
-                jsonOut[F("error")] = F(UNKNOWN_CMD);
+                jsonOut[F("error")] = F("ERR_UNKNOWN_CMD");
                 return false;
             }
 
             return true;
         }
 
+        bool isProtected(JsonObject jsonIn, JsonObject jsonOut, const char *clientIP) {
+            if(mConfig->sys.adminPwd[0] != '\0') { // check if admin password is set
+                if(strncmp("*", clientIP, 1) != 0) { // no call from MqTT
+                    const char* token = nullptr;
+                    if(jsonIn.containsKey(F("token")))
+                        token = jsonIn["token"];
+
+                    if(!mApp->isProtected(clientIP, token, false))
+                        return false;
+
+                    jsonOut[F("error")] = F("ERR_PROTECTED");
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+    private:
+        constexpr static uint8_t acList[] = {FLD_UAC, FLD_IAC, FLD_PAC, FLD_F, FLD_PF, FLD_T, FLD_YT,
+            FLD_YD, FLD_PDC, FLD_EFF, FLD_Q, FLD_MP};
+        constexpr static uint8_t acListHmt[] = {FLD_UAC_1N, FLD_IAC_1, FLD_PAC, FLD_F, FLD_PF, FLD_T,
+            FLD_YT, FLD_YD, FLD_PDC, FLD_EFF, FLD_Q, FLD_MP};
+        constexpr static uint8_t dcList[] = {FLD_UDC, FLD_IDC, FLD_PDC, FLD_YD, FLD_YT, FLD_IRR, FLD_MP};
+
+    private:
         IApp *mApp = nullptr;
         HMSYSTEM *mSys = nullptr;
         HmRadio<> *mRadioNrf = nullptr;

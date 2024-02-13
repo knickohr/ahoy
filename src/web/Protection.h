@@ -18,11 +18,9 @@ class Protection {
         explicit Protection(const char *pwd) {
             mPwd = pwd;
             mLogoutTimeout = 0;
-            mLoginIp.fill(0);
-
-            // no password set - unlock
-            if(pwd[0] == '\0')
-                mProtected = false;
+            mWebIp.fill(0);
+            mApiIp.fill(0);
+            mToken.fill(0);
         }
 
     public:
@@ -35,50 +33,80 @@ class Protection {
             return mInstance;
         }
 
-        void tickSecond() {
-            // auto logout
+        void tickSecond() { // auto logout
             if(0 != mLogoutTimeout) {
                 if (0 == --mLogoutTimeout) {
                     if(mPwd[0] != '\0')
-                        mProtected = true;
+                        lock(false);
                 }
             }
         }
 
-        void lock(void) {
-            mProtected = true;
-            mLoginIp.fill(0);
+        void lock(bool fromWeb) {
+            mWebIp.fill(0);
+            if(fromWeb)
+                return;
+
+            mApiIp.fill(0);
+            mToken.fill(0);
         }
 
-        void unlock(const char *clientIp) {
+        char *unlock(const char *clientIp, bool loginFromWeb) {
             mLogoutTimeout = LOGOUT_TIMEOUT;
-            mProtected = false;
-            ah::ip2Arr(static_cast<uint8_t*>(mLoginIp.data()), clientIp);
+
+            if(loginFromWeb)
+                ah::ip2Arr(static_cast<uint8_t*>(mWebIp.data()), clientIp);
+            else {
+                ah::ip2Arr(static_cast<uint8_t*>(mApiIp.data()), clientIp);
+                genToken();
+            }
+
+            return reinterpret_cast<char*>(mToken.data());
         }
 
         void resetLockTimeout(void) {
-            mLogoutTimeout = LOGOUT_TIMEOUT;
+            if(0 != mLogoutTimeout)
+                mLogoutTimeout = LOGOUT_TIMEOUT;
         }
 
-        bool isProtected(void) const {
-            return mProtected;
-        }
-
-        bool isProtected(const char *clientIp) const {
-            if(mProtected)
-                return true;
-
-            if(mPwd[0] == '\0')
+        bool isProtected(const char *clientIp, const char *token, bool askedFromWeb) const {
+            if(mPwd[0] == '\0') // no password set
                 return false;
 
+            if(askedFromWeb)
+                return !isIdentical(clientIp, mWebIp);
+
+            if(nullptr == token)
+                return true;
+
+            if('*' == token[0]) // call from WebUI
+                return !isIdentical(clientIp, mWebIp);
+
+            if(isIdentical(clientIp, mApiIp))
+                return (0 != strncmp(token, mToken.data(), 16));
+
+            return false;
+        }
+
+    private:
+        void genToken() {
+            mToken.fill(0);
+            for(uint8_t i = 0; i < 16; i++) {
+                mToken[i] = random(1, 35);
+                // convert to ascii number 1-9 (zero isn't allowed) or upper
+                // case character A-Z
+                mToken[i] += (mToken[i] < 10) ? 0x30 : 0x37;
+            }
+        }
+
+        bool isIdentical(const char *clientIp, const std::array<uint8_t, 4> cmp) const {
             std::array<uint8_t, 4> ip;
             ah::ip2Arr(static_cast<uint8_t*>(ip.data()), clientIp);
             for(uint8_t i = 0; i < 4; i++) {
-                if(mLoginIp[i] != ip[i])
-                    return true;
+                if(cmp[i] != ip[i])
+                    return false;
             }
-
-            return false;
+            return true;
         }
 
     protected:
@@ -86,9 +114,9 @@ class Protection {
 
     private:
         const char *mPwd;
-        bool mProtected = true;
-        uint16_t mLogoutTimeout = LOGOUT_TIMEOUT;
-        std::array<uint8_t, 4> mLoginIp;
+        uint16_t mLogoutTimeout = 0;
+        std::array<uint8_t, 4> mWebIp, mApiIp;
+        std::array<char, 17> mToken;
 };
 
 #endif /*__PROTECTION_H__*/

@@ -8,7 +8,7 @@
 #include "config/config.h"
 #include "defines.h"
 
-#define LOG_MAX_BUFFER 250;
+#define LOGQUEUE_MAX_BUFFER 5000;
 
 /**
  * IV

@@ -9,7 +9,7 @@
 #include "cmt2300a.h"
 #include "../hm/radio.h"
 
-#define CMT_SWITCH_CHANNEL_CYCLE    5
+//#define CMT_SWITCH_CHANNEL_CYCLE    5
 
 template<uint32_t DTU_SN = 0x81001765>
 class CmtRadio : public Radio {
@@ -152,9 +152,9 @@ mLogQueue->add_TX(iv->id, 0, mCmt.getFreqKhz()/1000.0f, 0, 0, len, mTxBuf);
         }
 
         inline void sendSwitchChCmd(Inverter<> *iv, uint8_t ch) {
-            if(CMT_SWITCH_CHANNEL_CYCLE > ++mSwitchCycle)
-                return;
-            mSwitchCycle = 0;
+            //if(CMT_SWITCH_CHANNEL_CYCLE > ++mSwitchCycle)
+            //    return;
+            //mSwitchCycle = 0;
 
             /** ch:
              * 0x00: 860.00 MHz
@@ -178,7 +178,7 @@ mLogQueue->add_TX(iv->id, 0, mCmt.getFreqKhz()/1000.0f, 0, 0, len, mTxBuf);
             packet_t p;
             p.millis = millis() - mMillis;
             if(CmtStatus::SUCCESS == mCmt.getRx(p.packet, &p.len, 28, &p.rssi)) {
-                mSwitchCycle = 0;
+                //mSwitchCycle = 0;
                 p.ch = 0; // not used for CMT inverters
                 mBufCtrl.push(p);
             }
@@ -194,7 +194,7 @@ mLogQueue->add_TX(iv->id, 0, mCmt.getFreqKhz()/1000.0f, 0, 0, len, mTxBuf);
         bool mCmtAvail = false;
         bool mRqstGetRx = false;
         uint32_t mMillis = 0;
-        uint8_t mSwitchCycle = 0;
+        //uint8_t mSwitchCycle = 0;
 };
 
 #endif /*__HMS_RADIO_H__*/
