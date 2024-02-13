@@ -60,14 +60,18 @@ class LogQueue {
     };
 
     void loop(void) {
-        if (_isValid) {
-            _isValid = false;
-            print();
-        }
+//        if (_isValid) {
+//            _isValid = false;
+//            print();
+//        }
     }
 
     void setValid(void) {
         _isValid = true;
+    }
+
+    bool getValid(void) {
+        return _isValid;
     }
 
     void add_TX(uint8_t ivId, uint8_t channel, uint8_t frequency, uint8_t hwRetries, uint8_t swRetransmit, uint8_t payload, std::array<uint8_t, MAX_RF_PAYLOAD_SIZE> txBuff) {
@@ -154,7 +158,7 @@ class LogQueue {
         TO["T"] = timeout;
     };
 
-    void add_RX(uint8_t ivId = 0, uint8_t channel = 0, uint8_t frequency = 0, String rxTime = "", packet_t *p = NULL) {
+    void add_RX(uint8_t ivId = 0, uint8_t channel = 0, float frequency = 0, String rxTime = "", packet_t *p = NULL) {
         // Timestamp
         unsigned long t = millis() - mMillisStart;
         // JSON
@@ -265,6 +269,13 @@ class LogQueue {
     void print() {
         DBGPRINTLN(_jsonLog.as<String>());
         _jsonLog.clear();
+    }
+
+    String getLog(void) {
+        String log = _jsonLog.as<String>();
+        _jsonLog.clear();
+        _isValid = false;
+        return log;
     }
 
    private:

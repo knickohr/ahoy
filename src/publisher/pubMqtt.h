@@ -25,6 +25,7 @@
 
 #include "pubMqttDefs.h"
 #include "pubMqttIvData.h"
+#include "utils/LogQueue.h"
 
 typedef std::function<void(JsonObject)> subscriptionCb;
 
@@ -52,7 +53,7 @@ class PubMqtt {
 
         ~PubMqtt() { }
 
-        void setup(cfgMqtt_t *cfg_mqtt, const char *devName, const char *version, HMSYSTEM *sys, uint32_t *utcTs, uint32_t *uptime) {
+        void setup(cfgMqtt_t *cfg_mqtt, const char *devName, const char *version, HMSYSTEM *sys, uint32_t *utcTs, uint32_t *uptime, LogQueue *logQueue) {
             mCfgMqtt         = cfg_mqtt;
             mDevName         = devName;
             mVersion         = version;
@@ -60,6 +61,7 @@ class PubMqtt {
             mUtcTimestamp    = utcTs;
             mUptime          = uptime;
             mIntervalTimeout = 1;
+            mLogQueue        = logQueue;
 
             SendIvData.setup(sys, utcTs, &mSendList);
             SendIvData.setPublishFunc([this](const char *subTopic, const char *payload, bool retained, uint8_t qos) {
@@ -96,6 +98,8 @@ class PubMqtt {
 
         void loop() {
             SendIvData.loop();
+
+SendLogQueue();
 
             #if defined(ESP8266)
             mClient.loop();
@@ -602,6 +606,14 @@ class PubMqtt {
             mLastAnyAvail = anyAvail;
         }
 
+void SendLogQueue(void) {
+    if (mLogQueue->getValid()) {
+        String Log;
+        Log = mLogQueue->getLog();
+        publish("logQueue", Log.c_str(), false);
+    }
+}
+
         espMqttClient mClient;
         cfgMqtt_t *mCfgMqtt = nullptr;
         #if defined(ESP8266)
@@ -630,6 +642,7 @@ class PubMqtt {
         std::array<char, (32 + MAX_NAME_LENGTH + 1)> mSubTopic;
         std::array<char, 100> mVal;
         discovery_t mDiscovery = {true, 0, 0, 0};
+        LogQueue *mLogQueue;
 };
 
 #endif /*ENABLE_MQTT*/
