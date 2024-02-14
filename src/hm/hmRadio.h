@@ -370,6 +370,8 @@ if (rx_ready) {
                 }*/
 
 mLogQueue->add_TX(iv->id, mRfChLst[mTxChIdx], 0, mTxRetries, 0, len, mTxBuf);
+if (isRetransmit)
+    mLogQueue->add_TxAttemp();
 //                DPRINT_IVID(DBG_INFO, iv->id);
 //                DBGPRINT(F("TX "));
 //                DBGPRINT(String(len));

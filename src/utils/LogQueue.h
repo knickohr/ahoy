@@ -8,8 +8,6 @@
 #include "config/config.h"
 #include "defines.h"
 
-#define LOGQUEUE_MAX_BUFFER 5000;
-
 /**
  * IV
  * TX
@@ -59,12 +57,7 @@ class LogQueue {
         _PrintWholeTrace = printWholeTrace;
     };
 
-    void loop(void) {
-//        if (_isValid) {
-//            _isValid = false;
-//            print();
-//        }
-    }
+    void loop(void) {}
 
     void setValid(void) {
         _isValid = true;
@@ -87,7 +80,7 @@ class LogQueue {
         if (frequency != 0)
             TX["f"] = frequency;
         TX["h"] = hwRetries;
-        TX["s"] = swRetransmit;
+        TX["s"] = _TxAttemp;
         TX["P"] = payload;
         JsonArray data = TX["D"].to<JsonArray>();
         if (*_PrintWholeTrace) {
@@ -109,43 +102,12 @@ class LogQueue {
         }
     };
 
-    void add_xrTX(String ivId = "", String txCh = "", String txFreq = "", String txHwRetries = "", String txSwRetransmit = "", String txPayload = "", String txData = "") {
-        // Timestamp
-        mMillisStart = millis();
-        unsigned long t = millis() - mMillisStart;
-        // JSON
-        JsonObject rTX = _jsonLog["rTX"].to<JsonObject>();
-        // Timestamp
-        rTX["t"] = t;
-        // Channel
-        if (txCh != "")
-            rTX["ch"] = txCh;
-        // Frequency
-        if (txFreq != "")
-            rTX["freq"] = txFreq;
-        // HW Retries
-        rTX["Re"] = txHwRetries;
-        // SW Retransmits
-        rTX["RT"] = txSwRetransmit;
-        /*
-                // Payload
-                rTX["P"] = txPayload;
-                // Data
-                JsonArray data = rTX["D"].to<JsonArray>();
-                for (uint8_t i = 0; i < 5; i++) {
-                    data.add("?");
-                }
-        */
-        /*
-                DBGPRINT(F(",P="));
-                DBGPRINT(String(txPayload));
-                DBGPRINT(F(",D="));
-                DBGPRINT(String(txData));
-        */
-    };
-
     void set_TxStart(uint32_t tspMillis = millis()) {
         mMillisStart = tspMillis;
+    }
+
+    void add_TxAttemp(void) {
+        _TxAttemp++;
     }
 
     void add_Timeout(String ivId = "", String timeout = "") {
@@ -275,6 +237,7 @@ class LogQueue {
         String log = _jsonLog.as<String>();
         _jsonLog.clear();
         _isValid = false;
+        _TxAttemp = 0;
         return log;
     }
 
@@ -290,9 +253,7 @@ class LogQueue {
     bool *_SerialDebug = nullptr;
     bool *_PrintWholeTrace = nullptr;
     bool _isValid = false;
-    //    uint32_t *mTimestamp = nullptr;
-    //    uint32_t mTimestampStart = 0;
-    //    uint32_t mMillis = 0;
     unsigned long mMillisStart = 0;
     StaticJsonDocument<5000> _jsonLog;
+    uint8_t _TxAttemp = 0;
 };
