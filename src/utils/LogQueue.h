@@ -20,7 +20,7 @@
  * a =                          A =
  * b =                          B =
  * c = nRF Channel              C =
- * d =                          D = Data
+ * d = dataFramesExpected       D = Data
  * e =                          E =
  * f = cmt Frequency            F =
  * g =                          G =
@@ -67,7 +67,7 @@ class LogQueue {
         return _isValid;
     }
 
-    void add_TX(uint8_t ivId, uint8_t channel, uint8_t frequency, uint8_t hwRetries, uint8_t swRetransmit, uint8_t payload, std::array<uint8_t, MAX_RF_PAYLOAD_SIZE> txBuff) {
+    void add_TX(uint8_t ivId, uint8_t channel, uint8_t frequency, uint8_t hwRetries, uint8_t swRetransmit, uint8_t payload, std::array<uint8_t, MAX_RF_PAYLOAD_SIZE> txBuff, uint8_t framesExpected) {
         // Timestamp
         mMillisStart = millis();
         unsigned long t = millis() - mMillisStart;
@@ -100,6 +100,7 @@ class LogQueue {
             data.add(dec2hex(txBuff[10]));
             data.add(dec2hex(txBuff[9]));
         }
+        TX["d"] = framesExpected;
     };
 
     void set_TxStart(uint32_t tspMillis = millis()) {

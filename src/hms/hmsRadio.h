@@ -98,7 +98,7 @@ class CmtRadio : public Radio {
             updateCrcs(&len, appendCrc16);
 
             if(*mSerialDebug) {
-mLogQueue->add_TX(iv->id, 0, mCmt.getFreqKhz()/1000.0f, 0, 0, len, mTxBuf);
+mLogQueue->add_TX(iv->id, 0, mCmt.getFreqKhz()/1000.0f, 0, 0, len, mTxBuf, mFramesExpected);
 //                DPRINT_IVID(DBG_INFO, iv->id);
 //                DBGPRINT(F("TX "));
 //                DBGPRINT(String(mCmt.getFreqKhz()/1000.0f));
