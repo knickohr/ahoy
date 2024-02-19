@@ -1,5 +1,11 @@
 # Development Changes
 
+## 0.8.84 - 2024-02-19
+* fix homeassistant autodiscovery #1432
+* merge PR: more gracefull handling of complete retransmits #1433
+
+# RELEASE 0.8.83 - 2024-02-16
+
 ## 0.8.82 - 2024-02-15
 * fixed crash once firmware version was read and sent via MqTT #1428
 * possible fix: reset yield offset on midnight #1429

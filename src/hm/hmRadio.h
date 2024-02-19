@@ -172,7 +172,7 @@ if (rx_ready) {
                     mTimeslotStart = millis();
                     tempRxChIdx = mRxChIdx;  // might be better to start off with one channel less?
                     mRxPendular = false;
-                    mNRFloopChannels = (mLastIv->mCmd == MI_REQ_CH1);
+                    mNRFloopChannels = (mLastIv->mCmd == MI_REQ_CH1 || mLastIv->mCmd == MI_REQ_CH2);
                     innerLoopTimeout = DURATION_LISTEN_MIN;
                 }
 
