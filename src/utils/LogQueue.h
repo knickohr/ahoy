@@ -9,18 +9,20 @@
 #include "defines.h"
 
 /**
- * IV
- * TX
- * RX
- * IA
- * IN
- * ID
- * TO
+ * TX   Senden
+ * RX   Empfangen
+ * Fm   Frame missing
+ * mF   Frames missing
+ * RST  Reset
+ * IA   Interrupt ACK
+ * IN   Interrupt NACK
+ * ID   Interrupt Data
+ * TO   Timeout
  *
  * a =                          A =
  * b =                          B =
  * c = nRF Channel              C =
- * d = dataFramesExpected       D = Data
+ * d =                          D = Data
  * e =                          E =
  * f = cmt Frequency            F =
  * g =                          G =
