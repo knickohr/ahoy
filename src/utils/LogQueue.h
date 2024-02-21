@@ -53,10 +53,11 @@ class LogQueue {
 
     ~LogQueue(){};
 
-    void setup(bool *serialDebug, bool *privacyMode, bool *printWholeTrace) {
+    void setup(bool *serialDebug, bool *privacyMode, bool *printWholeTrace, bool *log2mqtt) {
         _PrivacyMode = privacyMode;
         _SerialDebug = serialDebug;
         _PrintWholeTrace = printWholeTrace;
+        _Log2Mqtt = log2mqtt;
     };
 
     void loop(void) {}
@@ -103,17 +104,23 @@ class LogQueue {
             data.add(dec2hex(txBuff[9]));
         }
         TX["d"] = framesExpected;
+        // Serial
+        if (_Log2Mqtt)
+            DBGPRINTLN("log2mqtt:true");
+        DBGPRINTLN("TX:" + _jsonLog["TX"].as<String>());
+        // LogQueue
+        _TxAttemp++;
     };
 
     void set_TxStart(uint32_t tspMillis = millis()) {
         mMillisStart = tspMillis;
     }
 
-    void add_TxAttemp(void) {
-        _TxAttemp++;
-    }
+//    void add_TxAttemp(void) {
+//        _TxAttemp++;
+//    }
 
-    void add_Timeout(String ivId = "", String timeout = "") {
+    void add_Timeout(uint8_t ivId, uint32_t timeout) {
         // Timestamp
         unsigned long t = millis() - mMillisStart;
         // JSON
@@ -121,9 +128,11 @@ class LogQueue {
         TO["I"] = ivId;
         TO["t"] = t;
         TO["T"] = timeout;
+        // Serial
+        DBGPRINTLN("TO:" + _jsonLog["TO"].as<String>());
     };
 
-    void add_RX(uint8_t ivId = 0, uint8_t channel = 0, float frequency = 0, String rxTime = "", packet_t *p = NULL) {
+    void add_RX(uint8_t ivId, uint8_t channel, float frequency, uint16_t rxTime, packet_t *p) {
         // Timestamp
         unsigned long t = millis() - mMillisStart;
         // JSON
@@ -168,6 +177,8 @@ class LogQueue {
             data.add(dec2hex(p->packet[0]));
             data.add(dec2hex(p->packet[9]));
         }
+        // Serial
+        DBGPRINTLN("RX:" + _jsonLog["RX"].as<String>());
     }
 
     void add_missingFrame(uint8_t ivId, uint8_t nr, uint8_t attemp, uint8_t attemptsMax) {
@@ -180,6 +191,8 @@ class LogQueue {
         Fm["i"] = nr;
         Fm["s"] = (attemptsMax - attemp);
         Fm["S"] = attemptsMax;
+        // Serial
+        DBGPRINTLN("Fm:" + _jsonLog["Fm"].as<String>());
     }
 
     void add_missingFrames(uint8_t ivId, uint8_t text) {
@@ -190,6 +203,8 @@ class LogQueue {
         mF["I"] = ivId;
         mF["t"] = t;
         mF["c"] = text;
+        // Serial
+        DBGPRINTLN("mF:" + _jsonLog["mF"].as<String>());
     }
 
     void add_Reset(uint8_t ivId) {
@@ -199,8 +214,11 @@ class LogQueue {
         JsonObject RST = _jsonLog["RST"].to<JsonObject>();
         RST["I"] = ivId;
         RST["t"] = t;
+        // Serial
+        DBGPRINTLN("RST:" + _jsonLog["RST"].as<String>());
     }
 
+// TODO: cmt
     void add_IRQ_ACK(uint8_t ivId, uint8_t index) {
         // Timestamp
         unsigned long t = millis() - mMillisStart;
@@ -209,8 +227,11 @@ class LogQueue {
         IrqACK["I"] = ivId;
         IrqACK["t"] = t;
         IrqACK["i"] = index;
+        // Serial
+        DBGPRINTLN("IA:" + _jsonLog["IA"].as<String>());
     };
 
+// TODO: cmt
     void add_IRQ_NACK(uint8_t ivId, uint8_t index) {
         // Timestamp
         unsigned long t = millis() - mMillisStart;
@@ -219,8 +240,11 @@ class LogQueue {
         IrqNACK["I"] = ivId;
         IrqNACK["t"] = t;
         IrqNACK["i"] = index;
+        // Serial
+        DBGPRINTLN("IN:" + _jsonLog["IN"].as<String>());
     };
 
+// Todo: cmt
     void add_IRQ_Data(uint8_t ivId, uint8_t rssi) {
         // Timestamp
         unsigned long t = millis() - mMillisStart;
@@ -229,19 +253,39 @@ class LogQueue {
         IrqData["I"] = ivId;
         IrqData["t"] = t;
         IrqData["r"] = rssi;
+        // Serial
+        DBGPRINTLN("ID:" + _jsonLog["ID"].as<String>());
     };
 
-    void print() {
-        DBGPRINTLN(_jsonLog.as<String>());
-        _jsonLog.clear();
+//    void print() {
+//        DBGPRINTLN(_jsonLog.as<String>());
+//        _jsonLog.clear();
+//    }
+
+//    String getLog(void) {
+//        String log = _jsonLog.as<String>();
+//        _jsonLog.clear();
+//        _isValid = false;
+//        _TxAttemp = 0;
+//        return log;
+//    }
+
+    bool istLogForMqtt() {
+        if ((_Log2Mqtt) && (_isValid))
+            return true;
+        else
+            return false;
     }
 
-    String getLog(void) {
-        String log = _jsonLog.as<String>();
-        _jsonLog.clear();
-        _isValid = false;
-        _TxAttemp = 0;
-        return log;
+    String getLogForMqtt(void) {
+        if(_Log2Mqtt) {
+            String log = _jsonLog.as<String>();
+            _jsonLog.clear();
+            _isValid = false;
+            _TxAttemp = 0;
+            return log;
+        }
+        return String("");
     }
 
    private:
@@ -255,6 +299,7 @@ class LogQueue {
     bool *_PrivacyMode = nullptr;
     bool *_SerialDebug = nullptr;
     bool *_PrintWholeTrace = nullptr;
+    bool *_Log2Mqtt = nullptr;
     bool _isValid = false;
     unsigned long mMillisStart = 0;
     StaticJsonDocument<5000> _jsonLog;

@@ -141,12 +141,15 @@ mNrf24->setRetries(3, 15); // wait 3*250 = 750us, 16 * 250us -> 4000us = 4ms
                 // here we got news from the nRF
                 mIrqRcvd     = false;
                 mNrf24->whatHappened(tx_ok, tx_fail, rx_ready); // resets the IRQ pin to HIGH
+// LogQueue IA
 if (tx_ok) {
     mLogQueue->add_IRQ_ACK(mLastIv->id, mNrf24->getARC());
 }
+// LogQueue IN
 if (tx_fail) {
     mLogQueue->add_IRQ_NACK(mLastIv->id, mNrf24->getARC());
 }
+// LogQueue ID
 if (rx_ready) {
     mLogQueue->add_IRQ_Data(mLastIv->id, mNrf24->testRPD() ? -64 : -75);
 }
@@ -370,8 +373,8 @@ if (rx_ready) {
                 }*/
 
 mLogQueue->add_TX(iv->id, mRfChLst[mTxChIdx], 0, mTxRetries, 0, len, mTxBuf, mFramesExpected);
-if (isRetransmit)
-    mLogQueue->add_TxAttemp();
+//if (isRetransmit)
+//    mLogQueue->add_TxAttemp();
 
 //                DPRINT_IVID(DBG_INFO, iv->id);
 //                DBGPRINT(F("TX "));

@@ -45,7 +45,7 @@ void app::setup() {
 
     esp_task_wdt_reset();
 
-    mLogQueue.setup(&mConfig->serial.debug, &mConfig->serial.privacyLog, &mConfig->serial.printWholeTrace);
+    mLogQueue.setup(&mConfig->serial.debug, &mConfig->serial.privacyLog, &mConfig->serial.printWholeTrace, &mConfig->serial.log2mqtt);
 
     if(mConfig->nrf.enabled) {
         mNrfRadio.setup(&mConfig->serial.debug, &mConfig->serial.privacyLog, &mConfig->serial.printWholeTrace, &mLogQueue, mConfig->nrf.pinIrq, mConfig->nrf.pinCe, mConfig->nrf.pinCs, mConfig->nrf.pinSclk, mConfig->nrf.pinMosi, mConfig->nrf.pinMiso);
@@ -146,8 +146,6 @@ void app::setup() {
 void app::loop(void) {
     esp_task_wdt_reset();
 
-    mLogQueue.loop();
-
     if(mConfig->nrf.enabled)
         mNrfRadio.loop();
 
@@ -155,6 +153,8 @@ void app::loop(void) {
     if(mConfig->cmt.enabled)
         mCmtRadio.loop();
     #endif
+
+    mLogQueue.loop();
 
     ah::Scheduler::loop();
     mCommunication.loop();

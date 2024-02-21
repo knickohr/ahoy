@@ -136,7 +136,8 @@ class Communication : public CommQueue<> {
                 case States::CHECK_FRAMES: {
                     if((q->iv->radio->mBufCtrl.empty() && !mIsRetransmit) ) { // || (0 == q->attempts)) { // radio buffer empty. No more answers will be checked later
                         if(*mSerialDebug) {
-mLogQueue->add_Timeout(String(q->iv->id), String(q->iv->radio->mRadioWaitTime.getRunTime()));
+// LogQueue TO
+mLogQueue->add_Timeout(q->iv->id, q->iv->radio->mRadioWaitTime.getRunTime());
 //                            DPRINT_IVID(DBG_INFO, q->iv->id);
 //                            DBGPRINT(F("request timeout: "));
 //                            DBGPRINT(String(q->iv->radio->mRadioWaitTime.getRunTime()));
@@ -321,7 +322,7 @@ mLogQueue->add_missingFrame(q->iv->id, framnr, q->attempts, q->attemptsMax);
         }
 
         inline void printRxInfo(const queue_s *q, packet_t *p) {
-mLogQueue->add_RX(q->iv->id, p->ch, 0, String(p->millis), p);
+mLogQueue->add_RX(q->iv->id, p->ch, 0, p->millis, p);
 /*
 //
 DBGPRINTLN(F(""));

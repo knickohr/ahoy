@@ -99,8 +99,7 @@ class PubMqtt {
         void loop() {
             SendIvData.loop();
 
-// TODO: Nur ausführen wenn "Serial Debug over MQTT" aktiviert ist. @lumapu integriert es in www/config
-SendLogQueue();
+            SendLogQueue();
 
             #if defined(ESP8266)
             mClient.loop();
@@ -610,13 +609,11 @@ SendLogQueue();
             mLastAnyAvail = anyAvail;
         }
 
-void SendLogQueue(void) {
-    if (mLogQueue->getValid()) {
-        String Log;
-        Log = mLogQueue->getLog();
-        publish("logQueue", Log.c_str(), false);
-    }
-}
+        void SendLogQueue(void) {
+            if (mLogQueue->istLogForMqtt()) {
+                publish("logQueue", mLogQueue->getLogForMqtt().c_str(), false);
+            }
+        }
 
         espMqttClient mClient;
         cfgMqtt_t *mCfgMqtt = nullptr;
