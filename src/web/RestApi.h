@@ -1207,7 +1207,7 @@ class RestApi {
 
                 // pm_src
                 const char *neu = jsonIn[F("pm_src")].as<const char*>();
-                if (strncmp(mConfig->plugin.zeroExport.groups[group].pm_src, neu, strlen(neu)) != 0) {
+                if (strcmp(mConfig->plugin.zeroExport.groups[group].pm_src, neu) != 0) {
                     // unsubscribe
                     if(mConfig->plugin.zeroExport.groups[group].pm_type == zeroExportPowermeterType_t::Mqtt)
                     {
@@ -1226,7 +1226,7 @@ class RestApi {
                 snprintf(mConfig->plugin.zeroExport.groups[group].pm_jsonPath, ZEROEXPORT_GROUP_MAX_LEN_PM_JSONPATH, "%s", jsonIn[F("pm_jsonPath")].as<const char*>());
 
 
-                if (jsonIn[F("pm_pass")] != F("****"))
+                if (strcmp(jsonIn[F("pm_pass")], "****") != 0)
                 {
                     String auth = base64::encode(String(jsonIn[F("pm_user")]) + String(":") + String(jsonIn[F("pm_pass")]));
                     snprintf(mConfig->plugin.zeroExport.groups[group].pm_user, ZEROEXPORT_GROUP_MAX_LEN_PM_USER, "%s", String(jsonIn[F("pm_user")]).c_str());
