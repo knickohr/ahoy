@@ -315,13 +315,18 @@ class powermeter {
      */
     void setHeader(HTTPClient *h, String auth = "", u8_t realm = 0) {
         h->setFollowRedirects(HTTPC_STRICT_FOLLOW_REDIRECTS);
-        ///        h->setUserAgent("Ahoy-Agent");
         ///        // TODO: Ahoy-0.8.850024-zero
         h->setUserAgent(mApp->getVersion());
         h->setConnectTimeout(500);
         h->setTimeout(1000);
         h->addHeader("Content-Type", "application/json");
         h->addHeader("Accept", "application/json");
+
+        if (auth != NULL && realm) {
+            // h->addHeader("WWW-Authenticate", "Digest qop=\"auth\", realm=\"" + "shellypro4pm-f008d1d8b8b8" + "\\", nonce=\"60dc59c6\", algorithm=SHA-256");
+        }   else if (!auth.isEmpty()) {
+            h->addHeader("Authorization", "Basic " + auth);
+        }
 
         /*
         Shelly PM Mini Gen3
@@ -343,11 +348,6 @@ class powermeter {
         Shelly 3EM
         Shelly EM + 120A Clamp
 
-        */
-
-        /*if (auth != NULL && realm) http.addHeader("WWW-Authenticate", "Digest qop=\"auth\", realm=\"" + shellypro4pm-f008d1d8b8b8 + "\", nonce=\"60dc59c6\", algorithm=SHA-256");
-        else if (auth != NULL) http.addHeader("Authorization", "Basic " + auth);*/
-        /*
             All Required:
             realm: string, device_id of the Shelly device.
             username: string, must be set to admin.
@@ -596,10 +596,11 @@ class powermeter {
         bool result = false;
         mLog->addProperty("mod", "getPowermeterWattsTibber");
 
-        String auth = mCfg->groups[group].pm_pass;
-        String url = String("http://") + mCfg->groups[group].pm_src + String("/") + String(mCfg->groups[group].pm_jsonPath);
+        String url = String("http://");
+        url +=  String(mCfg->groups[group].pm_user) + ":" + String(mCfg->groups[group].pm_pass) + "@";
+        url +=  String(mCfg->groups[group].pm_src) +  "/" + String(mCfg->groups[group].pm_jsonPath);
 
-        setHeader(&http, auth);
+        setHeader(&http, mCfg->groups[group].pm_cred);
         http.begin(url);
 
         if (http.GET() == HTTP_CODE_OK && http.getSize() > 0) {
@@ -628,6 +629,12 @@ class powermeter {
                         break;
                 }
             }
+        }
+        else if (http.GET() != HTTP_CODE_OK || http.getSize() <= 0)
+        {
+            DBGPRINT("http-error: ");       DBGPRINTLN(String(http.GET()));
+            DBGPRINT("http-error size: ");  DBGPRINTLN(String(http.getSize()));
+            result = false;
         }
 
         http.end();
