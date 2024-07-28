@@ -7,8 +7,9 @@
 #include <U8g2lib.h>
 
 #include "../../hm/hmSystem.h"
-#include "../../hm/hmRadio.h"
+#include "../../hm/NrfRadio.h"
 #include "../../utils/helper.h"
+#include "../plugin_lang.h"
 #include "Display_Mono.h"
 #include "Display_Mono_128X32.h"
 #include "Display_Mono_128X64.h"
@@ -24,9 +25,9 @@ class Display {
             mMono = NULL;
         }
 
-        void setup(IApp *app, display_t *cfg, HMSYSTEM *sys, RADIO *hmradio, RADIO *hmsradio, uint32_t *utcTs) {
+        void setup(IApp *app, display_t *cfg, HMSYSTEM *sys, RADIO *nrfRadio, RADIO *hmsradio, uint32_t *utcTs) {
             mApp = app;
-            mHmRadio  = hmradio;
+            mNrfRadio  = nrfRadio;
             mHmsRadio = hmsradio;
             mCfg = cfg;
             mSys = sys;
@@ -78,16 +79,25 @@ class Display {
         void tickerSecond() {
             bool request_refresh = false;
 
-            if (mMono != NULL)
+            if (mMono != NULL) {
+                // maintain LCD and OLED displays with pixel shift screensavers, at least every 5 seconds
                 request_refresh = mMono->loop(motionSensorActive());
-
-            if (mNewPayload || (((++mLoopCnt) % 5) == 0) || request_refresh) {
-                DataScreen();
-                mNewPayload = false;
-                mLoopCnt = 0;
-            }
+                if (mNewPayload || (((++mLoopCnt) % 5) == 0) || request_refresh) {
+                    DataScreen();
+                    mNewPayload = false;
+                    mLoopCnt = 0;
+                }
+            }    
             #if defined(ESP32) && !defined(ETHERNET)
+            else if (DISP_TYPE_T10_EPAPER == mCfg->type) {
+                // maintain ePaper at least every 10 seconds
+                if (mNewPayload || (((++mLoopCnt) % 10) == 0)) {
+                    DataScreen();
+                    mNewPayload = false;
+                    mLoopCnt = 0;
+                }
                 mEpaper.tickerSecond();
+            }
             #endif
         }
 
@@ -148,7 +158,7 @@ class Display {
             mDisplayData.totalYieldDay = totalYieldDay;
             mDisplayData.totalYieldTotal = totalYieldTotal;
             bool nrf_en = mApp->getNrfEnabled();
-            bool nrf_ok = nrf_en && mHmRadio->isChipConnected();
+            bool nrf_ok = nrf_en && mNrfRadio->isChipConnected();
             #if defined(ESP32)
             bool cmt_en = mApp->getCmtEnabled();
             bool cmt_ok = cmt_en && mHmsRadio->isChipConnected();
@@ -179,12 +189,14 @@ class Display {
             else if (DISP_TYPE_T10_EPAPER == mCfg->type) {
                 mEpaper.loop((totalPower), totalYieldDay, totalYieldTotal, nrprod);
                 mRefreshCycle++;
+
+                if (mRefreshCycle > 480) {
+                    mEpaper.fullRefresh();
+                    mRefreshCycle = 0;
+                }
+
             }
 
-            if (mRefreshCycle > 480) {
-                mEpaper.fullRefresh();
-                mRefreshCycle = 0;
-            }
     #endif
         }
 
@@ -230,7 +242,7 @@ class Display {
         uint32_t *mUtcTs = nullptr;
         display_t *mCfg = nullptr;
         HMSYSTEM *mSys = nullptr;
-        RADIO *mHmRadio = nullptr;
+        RADIO *mNrfRadio = nullptr;
         RADIO *mHmsRadio = nullptr;
         uint16_t mRefreshCycle = 0;
 
