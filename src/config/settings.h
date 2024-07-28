@@ -229,6 +229,7 @@ typedef struct {
 #define ZEROEXPORT_GROUP_MAX_LEN_PM_JSONPATH      100
 #define ZEROEXPORT_GROUP_MAX_LEN_PM_USER           25
 #define ZEROEXPORT_GROUP_MAX_LEN_PM_PASS           25
+#define ZEROEXPORT_GROUP_MAX_LEN_PM_CRED           25
 #define ZEROEXPORT_GROUP_MAX_LEN_BATT_TOPIC       100
 #define ZEROEXPORT_GROUP_MAX_INVERTERS              3
 #define ZEROEXPORT_POWERMETER_MAX_ERRORS            5
@@ -311,6 +312,7 @@ typedef struct {
     char pm_jsonPath[ZEROEXPORT_GROUP_MAX_LEN_PM_JSONPATH];
     char pm_user[ZEROEXPORT_GROUP_MAX_LEN_PM_USER];
     char pm_pass[ZEROEXPORT_GROUP_MAX_LEN_PM_PASS];
+    char pm_cred[ZEROEXPORT_GROUP_MAX_LEN_PM_CRED];
     uint8_t pm_target;
     // Inverters
     zeroExportGroupInverter_t inverters[ZEROEXPORT_GROUP_MAX_INVERTERS];
