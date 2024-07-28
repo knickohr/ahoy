@@ -91,7 +91,7 @@ class Display {
             #if defined(ESP32) && !defined(ETHERNET)
             else if (DISP_TYPE_T10_EPAPER == mCfg->type) {
                 // maintain ePaper at least every 10 seconds
-                if (mNewPayload || (((++mLoopCnt) % 10) == 0)) {
+                if (mNewPayload || (((++mLoopCnt) % 13) == 0)) {
                     DataScreen();
                     mNewPayload = false;
                     mLoopCnt = 0;
