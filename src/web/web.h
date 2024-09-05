@@ -166,18 +166,14 @@ class Web {
             mUploadFp.write(data, len);
             if (final) {
                 mUploadFp.close();
-                #if !defined(ETHERNET)
                 char pwd[PWD_LEN];
                 strncpy(pwd, mConfig->sys.stationPwd, PWD_LEN); // backup WiFi PWD
-                #endif
                 if (!mApp->readSettings("/tmp.json")) {
                     mUploadFail = true;
                     DPRINTLN(DBG_ERROR, F("upload JSON error!"));
                 } else {
                     LittleFS.remove("/tmp.json");
-                    #if !defined(ETHERNET)
                     strncpy(mConfig->sys.stationPwd, pwd, PWD_LEN); // restore WiFi PWD
-                    #endif
                     for(uint8_t i = 0; i < MAX_NUM_INVERTERS; i++) {
                         if((mConfig->inst.iv[i].serial.u64 != 0) && (mConfig->inst.iv[i].serial.u64 < 138999999999)) { // hexadecimal
                             mConfig->inst.iv[i].serial.u64 = ah::Serial2u64(String(mConfig->inst.iv[i].serial.u64).c_str());
@@ -276,8 +272,8 @@ class Web {
             bool reboot = (!Update.hasError());
 
             String html = F("<!doctype html><html><head><title>Update</title><meta http-equiv=\"refresh\" content=\"");
-            #if defined(ETHERNET) && defined(CONFIG_IDF_TARGET_ESP32S3)
-                html += F("5");
+            #if defined(ETHERNET)
+                html += (mConfig->sys.eth.enabled) ? F("5") : F("20");
             #else
                 html += F("20");
             #endif
@@ -326,10 +322,18 @@ class Web {
         }
 
         void onIndex(AsyncWebServerRequest *request, bool checkAp = true) {
+            #if !defined(ETHERNET)
             if(mApp->isApActive() && checkAp) {
                 onWizard(request);
                 return;
             }
+            #else
+            // show wizard only if ethernet is not configured
+            if(mApp->isApActive() && checkAp && !mConfig->sys.eth.enabled) {
+                onWizard(request);
+                return;
+            }
+            #endif
             getPage(request, PROT_MASK_INDEX, index_html, index_html_len);
         }
 
@@ -436,6 +440,13 @@ class Web {
         }
 
         void onWizard(AsyncWebServerRequest *request) {
+            #if defined(ETHERNET)
+            if(mConfig->sys.eth.enabled) {
+                getPage(request, PROT_MASK_INDEX, index_html, index_html_len);
+                return;
+            }
+            #endif
+
             AsyncWebServerResponse *response = request->beginResponse_P(200, F("text/html; charset=UTF-8"), wizard_html, wizard_html_len);
             response->addHeader(F("Content-Encoding"), "gzip");
             response->addHeader(F("content-type"), "text/html; charset=UTF-8");
@@ -453,13 +464,12 @@ class Web {
             char buf[20] = {0};
 
             // general
-            #if !defined(ETHERNET)
             if (request->arg("ssid") != "")
                 request->arg("ssid").toCharArray(mConfig->sys.stationSsid, SSID_LEN);
             if (request->arg("pwd") != "{PWD}")
                 request->arg("pwd").toCharArray(mConfig->sys.stationPwd, PWD_LEN);
             mConfig->sys.isHidden = (request->arg("hidd") == "on");
-            #endif /* !defined(ETHERNET) */
+
             if (request->arg("ap_pwd") != "")
                 request->arg("ap_pwd").toCharArray(mConfig->sys.apPwd, PWD_LEN);
             if (request->arg("device") != "")
