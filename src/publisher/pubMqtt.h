@@ -376,68 +376,6 @@ class PubMqtt {
 
         }
 
-        inline void handleMessage(const char* topic, const uint8_t* payload, size_t len, size_t index, size_t total) {
-            DPRINT(DBG_INFO, mqttStr[MQTT_STR_GOT_TOPIC]);
-            DBGPRINTLN(String(topic));
-            if(NULL == mSubscriptionCb)
-                return;
-
-            DynamicJsonDocument json(128);
-            JsonObject root = json.to<JsonObject>();
-
-            bool limitAbs = false;
-            if(len > 0) {
-                char *pyld = new char[len + 1];
-                memcpy(pyld, payload, len);
-                pyld[len] = '\0';
-                if(NULL == strstr(topic, "limit"))
-                    root[F("val")] = atoi(pyld);
-                else
-                    root[F("val")] = atof(pyld);
-
-                if(pyld[len-1] == 'W')
-                    limitAbs = true;
-                delete[] pyld;
-            }
-
-            const char *p = topic + strlen(mCfgMqtt->topic);
-            uint8_t pos = 0, elm = 0;
-            char tmp[30];
-
-            while(1) {
-                if(('/' == p[pos]) || ('\0' == p[pos])) {
-                    memcpy(tmp, p, pos);
-                    tmp[pos] = '\0';
-                    switch(elm++) {
-                        case 1: root[F("path")] = String(tmp); break;
-                        case 2:
-                            if(strncmp("limit", tmp, 5) == 0) {
-                                if(limitAbs)
-                                    root[F("cmd")] = F("limit_nonpersistent_absolute");
-                                else
-                                    root[F("cmd")] = F("limit_nonpersistent_relative");
-                            } else
-                                root[F("cmd")] = String(tmp);
-                            break;
-                        case 3: root[F("id")] = atoi(tmp);   break;
-                        default: break;
-                    }
-                    if('\0' == p[pos])
-                        break;
-                    p = p + pos + 1;
-                    pos = 0;
-                }
-                pos++;
-            }
-
-            char out[128];
-            serializeJson(root, out, 128);
-            DPRINTLN(DBG_INFO, "json: " + String(out));
-            (mSubscriptionCb)(root);
-
-            mRxCnt++;
-        }
-
         void discoveryConfigLoop(void) {
             DynamicJsonDocument doc(256);
 

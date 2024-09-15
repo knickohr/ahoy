@@ -24,9 +24,9 @@ jobs:
       matrix:
         variant:
           #- opendtufusion
-          #- opendtufusion-ethernet
+#          #- opendtufusion-ethernet
           #- opendtufusion-16MB
-          #- opendtufusion-ethernet-16MB
+#          #- opendtufusion-ethernet-16MB
           #- esp8266
           #- esp8266-all
           #- esp8266-minimal
@@ -35,13 +35,13 @@ jobs:
           #- esp32-wroom32
           #- esp32-wroom32-minimal
           #- esp32-wroom32-prometheus
-          #- esp32-wroom32-ethernet
+#          #- esp32-wroom32-ethernet
           #- esp32-s2-mini
           #- esp32-c3-mini
           - opendtufusion-zero_export
-          - opendtufusion-ethernet-zero_export
+#          - opendtufusion-ethernet-zero_export
           - opendtufusion-16MB-zero_export
-          - opendtufusion-ethernet-16MB-zero_export
+#          - opendtufusion-ethernet-16MB-zero_export
 
     steps:
     - uses: actions/checkout@v4
@@ -100,22 +100,22 @@ jobs:
       matrix:
         variant:
           #- opendtufusion-de
-          #- opendtufusion-ethernet-de
+#          #- opendtufusion-ethernet-de
           #- opendtufusion-16MB-de
-          #- opendtufusion-ethernet-16MB-de          
+#          #- opendtufusion-ethernet-16MB-de          
           #- esp8266-de
           #- esp8266-all-de
           #- esp8266-prometheus-de
           #- esp8285-de
           #- esp32-wroom32-de
           #- esp32-wroom32-prometheus-de
-          #- esp32-wroom32-ethernet-de
+#          #- esp32-wroom32-ethernet-de
           #- esp32-s2-mini-de
           #- esp32-c3-mini-de
           - opendtufusion-zero_export-de
-          - opendtufusion-ethernet-zero_export-de
+#          - opendtufusion-ethernet-zero_export-de
           - opendtufusion-16MB-zero_export-de
-          - opendtufusion-ethernet-16MB-zero_export-de  
+#          - opendtufusion-ethernet-16MB-zero_export-de  
 
     steps:
     - uses: actions/checkout@v4
